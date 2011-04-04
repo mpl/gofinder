@@ -20,13 +20,15 @@ const cExt = `\.h|\.c`
 const fortranExt = `\.f90`
 const allExt = cExt + "|" + fortranExt
 
+//TODO: make a server of it. takes message to add/set includes, languages, etc...
 var (
 	fortranCallValidator = regexp.MustCompile(".*"+ fortranCall + ".*")
 	fortranUseModuleValidator = regexp.MustCompile(".*"+ fortranUseModule + ".*")
 //	fortranIncludes []string = []string{"/home/mpl/work/gildas-dev/kernel/", "/home/mpl/work/gildas-dev/packages/"}
 //	cppIncludes []string = []string{"/home/mpl/work/casa/casacore", "/home/mpl/work/casa/active/code/include"}
 	fortranIncludes []string = []string{"/home/mpl/git/iram/otf"}
-	cppIncludes []string = []string{"/home/mpl/tmp/9torrent", "/home/mpl/git/pl1"}
+//	cppIncludes []string = []string{"/home/mpl/tmp/9torrent", "/home/mpl/git/"}
+	cppIncludes []string = []string{"/home/mpl/git/"}
 	reg = flag.String("r", "", "regexp to search for")
 	help = flag.Bool("h", false, "show this help")
 )
@@ -80,10 +82,9 @@ func findFortranModule(module string) {
 		fortranIncludes, fortranExt)
 }
 
-func findInclude(include string) {
-	for _,s := range cppIncludes {
-//TODO: recurse
-		fullPath := path.Join(s, include)
+func findInclude(include string, list []string) {
+	for _,includeDir := range list {
+		fullPath := path.Join(includeDir, include)
 		_, err := os.Lstat(fullPath)
 		if err == nil {
 			port, err := plumb.Open("send", plan9.OWRITE)
@@ -101,6 +102,29 @@ func findInclude(include string) {
 				Data: []byte(fullPath),
 			})
 			return	
+		} else {
+			//search for other dirs in current dir
+			currentDir, err := os.Open(includeDir, os.O_RDONLY, 0644)
+			if err != nil {
+				log.Fatal(err)
+			}
+			names, err := currentDir.Readdirnames(-1)
+			if err != nil {
+				log.Fatal(err)
+			}
+			currentDir.Close()
+			var fi *os.FileInfo
+			for _, name := range names {
+				fullPath = path.Join(includeDir, name)
+				fi, err = os.Lstat(fullPath)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if fi.IsDirectory() {
+					// recurse
+					findInclude(include, []string{fullPath})
+				}
+			}
 		}
 	}
 }
@@ -146,6 +170,6 @@ func main() {
 	case fortranUseModuleValidator.MatchString(arg0):
 		findFortranModule(arg1)
 	default:
-		findInclude(arg0)
+		findInclude(arg0, cppIncludes)
 	}
 }
