@@ -3,135 +3,58 @@ package main
 import (
 	"flag"
 	"fmt"
+	"gob"
 	"log"
+	"net"
 	"os"
-	"path"
-	"regexp"
 	"strings"
-	"goplan9.googlecode.com/hg/plan9"
-	"bitbucket.org/fhs/goplumb/plumb"
 )
 
-const fortranCall = "call"
-const fortranUseModule = "use"
-const fortranSubroutine = "^subroutine "
-const fortranModule = "^module "
+const addKw = "add"
+const listKw = "list"
+const setKw = "set"
+
 const cExt = `\.h|\.c`
-const fortranExt = `\.f90`
-const allExt = cExt + "|" + fortranExt
+const cppExt = `\.h|\.cc`
+const allExt = cExt + "|" + cppExt + "|" + fortranExt
+
+const (
+	regex = iota
+	file
+	fortranSubroutine
+	fortranModule
+	addLoc
+	listLocs
+	setLang
+)
 
 //TODO: make a server of it. takes message to add/set includes, languages, etc...
+//TODO: use json as a config files for all the languages, so that user can add them without touching source.
 var (
-	fortranCallValidator = regexp.MustCompile(".*"+ fortranCall + ".*")
-	fortranUseModuleValidator = regexp.MustCompile(".*"+ fortranUseModule + ".*")
-//	fortranIncludes []string = []string{"/home/mpl/work/gildas-dev/kernel/", "/home/mpl/work/gildas-dev/packages/"}
-//	cppIncludes []string = []string{"/home/mpl/work/casa/casacore", "/home/mpl/work/casa/active/code/include"}
-	fortranIncludes []string = []string{"/home/mpl/git/iram/otf"}
-//	cppIncludes []string = []string{"/home/mpl/tmp/9torrent", "/home/mpl/git/"}
-	cppIncludes []string = []string{"/home/mpl/git/"}
+	daemon = flag.Bool("d", false, "starts the gofind server")
 	reg = flag.String("r", "", "regexp to search for")
 	help = flag.Bool("h", false, "show this help")
 )
 
-//TODO: a more portable/native solution
-func findRegex(reg string, list []string, extensions string) {
-	println(reg)
-	pr, pw, err := os.Pipe()
+func sendCommand(code int, what string, where int) {
+	c, err := net.Dial("tcp", "", "localhost:2020")
 	if err != nil {
 		log.Fatal(err)
 	}
-	nargs := 5
-	l := len(list)
-	args1 := make([]string, nargs + l)
-	args1[0] = "/usr/bin/find"
-	for i,s := range list {
-		args1[i+1] = s
-	}
-	args1[l+1] = "-regextype"
-	args1[l+2] = "posix-egrep"
-	args1[l+3] = "-regex"
-	args1[l+4] = ".*(" + extensions + ")$"
-	fds1 := []*os.File{os.Stdin, pw, os.Stderr}
-	
-	nargs = 4
-	args2 := make([]string, nargs)
-	args2[0] = "/usr/bin/xargs"
-	args2[1] = "/bin/grep"
-	args2[2] = "-nR"
-	args2[3] = reg
-	fds2 := []*os.File{pr, os.Stdout, os.Stderr}
-	
-	_, err = os.StartProcess(args1[0], args1, os.Environ(), "/", fds1)
+	enc := gob.NewEncoder(c)
+	err = enc.Encode(msg{code, what, where})
 	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = os.StartProcess(args2[0], args2, os.Environ(), "/", fds2)
-	if err != nil {
-		log.Fatal(err)
+		log.Fatal("encode error:", err)
 	}	
-}
-
-func findFortranSubroutine(call string) {
-//TODO: match the number of args of the subroutine
-	findRegex(fortranSubroutine + strings.Split(call, "(", -1)[0] + `(.*`,
-		fortranIncludes, fortranExt)
-}
-
-func findFortranModule(module string) {
-	findRegex(fortranModule + module,
-		fortranIncludes, fortranExt)
-}
-
-func findInclude(include string, list []string) {
-	for _,includeDir := range list {
-		fullPath := path.Join(includeDir, include)
-		_, err := os.Lstat(fullPath)
-		if err == nil {
-			port, err := plumb.Open("send", plan9.OWRITE)
-			if err != nil {
-				log.Fatal(err)
-				return
-			}
-			defer port.Close()
-			port.Send(&plumb.Msg{
-				Src:  "gofinder",
-				Dst:  "",
-				WDir: "/",
-				Kind: "text",
-				Attr: map[string]string{},
-				Data: []byte(fullPath),
-			})
-			return	
-		} else {
-			//search for other dirs in current dir
-			currentDir, err := os.Open(includeDir, os.O_RDONLY, 0644)
-			if err != nil {
-				log.Fatal(err)
-			}
-			names, err := currentDir.Readdirnames(-1)
-			if err != nil {
-				log.Fatal(err)
-			}
-			currentDir.Close()
-			var fi *os.FileInfo
-			for _, name := range names {
-				fullPath = path.Join(includeDir, name)
-				fi, err = os.Lstat(fullPath)
-				if err != nil {
-					log.Fatal(err)
-				}
-				if fi.IsDirectory() {
-					// recurse
-					findInclude(include, []string{fullPath})
-				}
-			}
-		}
-	}
+	c.Close()
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: \n\t gofinder include_path \n");
-	fmt.Fprintf(os.Stderr, "\t gofinder -r regexp \n");
+	fmt.Fprintf(os.Stderr, "usage: \n\t gofind -d \n");
+	fmt.Fprintf(os.Stderr, "\t gofind file_path \n");
+	fmt.Fprintf(os.Stderr, "\t gofind -r regexp \n");
+	fmt.Fprintf(os.Stderr, "\t gofind cmd \n");
+//TODO: explain cmd
 	flag.PrintDefaults();
 	os.Exit(2);
 }
@@ -144,32 +67,69 @@ func main() {
 	}
 	
 	if flag.NArg() == 0 {
-		println("regexp: "+*reg) 
+		if *daemon {
+			listen()
+			return
+		}
 		if *reg == "" {
 			usage()
 		}
-		findRegex(*reg, cppIncludes, allExt)
+		println("regexp: "+*reg)
+		sendCommand(regex, *reg, allZones)
 		return
 	}
 
 	arg0 := flag.Args()[0]
 	arg1 := ""
-	// check for chording
+	arg2 := ""
+	where := allZones
 	chorded := strings.Fields(arg0)
-	if len(chorded) > 1 {
+	switch len(chorded) {
+	case 1:
+		// not from chording
+		if flag.NArg() >= 2 {
+			arg1 = flag.Args()[1]
+			if flag.NArg() >= 3 {
+				arg2 = flag.Args()[2]
+			}
+//TODO: usage if > 3
+		}
+	case 3:
+		// from chording
+		arg2 = chorded[2]
+		fallthrough
+	case 2:
+		// from chording
 		arg0 = chorded[0]
 		arg1 = chorded[1]
-	} else {
-		if flag.NArg() == 2 {
-			arg1 = flag.Args()[1]
-		}
+	default:
+		usage()
+	}	
+
+	switch arg1 {
+	case "fortran":
+		where = fortranZone
+	case "cpp":
+		where = cppZone
+	default:
+		where = allZones
 	}
 	switch {
 	case fortranCallValidator.MatchString(arg0):
-		findFortranSubroutine(arg1)
+		sendCommand(fortranSubroutine, arg1, fortranZone)
 	case fortranUseModuleValidator.MatchString(arg0):
-		findFortranModule(arg1)
+		sendCommand(fortranModule, arg1, fortranZone)
+	case arg0 == addKw:
+		if flag.NArg() < 3 {
+			usage()
+		}
+		sendCommand(addLoc, arg2, where)
+	case arg0 == listKw:
+		sendCommand(listLocs, "", where)
+	case arg0 == setKw:
+		sendCommand(setLang, arg1, where)
 	default:
-		findInclude(arg0, cppIncludes)
+// Y U NO WORK?
+		sendCommand(file, arg0, 9000)
 	}
 }

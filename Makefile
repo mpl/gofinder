@@ -1,8 +1,10 @@
 include $(GOROOT)/src/Make.inc
  
-TARG=gofinder
+TARG=gofind
 
 GOFILES=\
-	main.go
+	fortran.go \
+	main.go	\
+	server.go
 
 include $(GOROOT)/src/Make.cmd
