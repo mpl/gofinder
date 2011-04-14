@@ -1,11 +1,12 @@
 package main
 
 import (
+	"log"
 	"regexp"
 	"strings"
 )
 
-const fortranExt = `\.f90`
+const fortran = "fortran"
 
 var (
 	fortranCallValidator = regexp.MustCompile(".*call.*")
@@ -13,13 +14,23 @@ var (
 )
 
 func findFortranSubroutine(call string) {
+	v, ok := langs[fortran]
+	if !ok {
+		log.Printf("%s not a key in langs \n", fortran)
+		return
+	}
 //TODO: match the number of args of the subroutine
 	findRegex("^subroutine " + strings.Split(call, "(", -1)[0] + `(.*`,
-		fortranIncludes, fortranExt)
+		v.Locations, v.Ext)
 }
 
 func findFortranModule(module string) {
+	v, ok := langs[fortran]
+	if !ok {
+		log.Printf("%s not a key in langs \n", fortran)
+		return
+	}
 	findRegex("^module " + module,
-		fortranIncludes, fortranExt)
+		v.Locations, v.Ext)
 }
 

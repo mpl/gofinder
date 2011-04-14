@@ -10,31 +10,19 @@ import (
 	"bitbucket.org/fhs/goplumb/plumb"
 )
 
-const (
-	fortranZone = iota
-	cppZone
-	allZones
-)
-
 var (
 	lang = ""
-	fortranIncludes []string 
-	cppIncludes []string 
-	allCode []string 
-
-//	fortranIncludes []string = []string{"/home/mpl/work/gildas-dev/kernel/", "/home/mpl/work/gildas-dev/packages/"}
-//	cppIncludes []string = []string{"/home/mpl/work/casa/casacore", "/home/mpl/work/casa/active/code/include"}
-//	allLocs []string = []string{"/home/mpl/work/casa/casacore", "/home/mpl/work/casa/active/code"}
+	langs = make(map[string]language, 1)
 )
 
 type msg struct {
 	Action int
 	What string
-	Where int
+	Where string
 }
 
 func listen() {
-	ln, err := net.Listen("tcp", ":2020")
+	ln, err := net.Listen("tcp", ":" + *port)
 	if err != nil {
 		log.Fatalf("listen error: %v", err)
 	}
@@ -55,24 +43,26 @@ func serve(conn net.Conn) {
 	if err != nil {
 		log.Fatal("decode error:", err)
 	}
-	where := &allCode
-	switch m.Where {
-	case fortranZone:
-		where = &fortranIncludes
-	case cppZone:
-		where = &cppIncludes
-	case allZones:
-		where = &allCode
-	default:
-		where = getLangZone()
+	if m.Where == "" {
+		m.Where = lang
 	}
+	v, ok := langs[m.Where]
+	if !ok {
+		v = langs[all]
+	}
+	where := &(v.Locations)
+	
 	switch m.Action {
 	case regex:
-		findRegex(m.What, *where, allExt)
+		findRegex(m.What, *where, v.Ext)
 	case file:
 		findFile(m.What, *where)
+	case fortranSubroutine:
+		findFortranSubroutine(m.What)
+	case fortranModule:
+		findFortranModule(m.What)
 	case addLoc:
-		addLocation(m.What, where)
+		addLocation(m.What, m.Where)
 	case listLocs:
 		listLocations(*where)
 	case setLang:
@@ -82,29 +72,30 @@ func serve(conn net.Conn) {
 	}
 }
 
-//TODO: only set to allowed values
 func setLanguage(lng string) {
-	lang = lng
-}
-
-func getLangZone() *[]string {
-	where := &allCode
-	switch lang {
-	case "fortran":
-		where = &fortranIncludes
-	case "cpp":
-		where = &cppIncludes
-	default:
-		where = &allCode		
+	_,ok := langs[lng]
+	if ok {
+		lang = lng
 	}
-	return where
 }
 
-func addLocation(location string, where *[]string) {
-	*where = append(*where, location)
+func addLocation(location string, where string) {
+	l,ok := langs[where]
+	if !ok {
+		log.Printf("%s not a key in langs \n", where)
+		return
+	}
+	l.Locations = append(l.Locations, location)
+	langs[where] = l
 	// update allCode as well
-	if where != &allCode {
-		allCode = append(allCode, location)
+	if where != all {
+		l, ok := langs[all]
+		if !ok {
+			log.Fatal("%s not a key in langs \n", where)
+			return
+		}
+		l.Locations = append(l.Locations, location)
+		langs[all] = l		
 	}
 }
 
@@ -114,45 +105,44 @@ func listLocations(where []string) {
 	}
 }
 
-//TODO: a more portable/native solution
 //TODO: follow symlinks??
 func findRegex(reg string, list []string, extensions string) {
-	println(reg)
+	var err os.Error
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		log.Fatal(err)
 	}
 	nargs := 5
-	l := len(list)
-	args1 := make([]string, nargs + l)
-	args1[0] = "/usr/bin/find"
-	for i,s := range list {
-		args1[i+1] = s
-	}
-	args1[l+1] = "-regextype"
-	args1[l+2] = "posix-egrep"
-	args1[l+3] = "-regex"
-	args1[l+4] = ".*(" + extensions + ")$"
+	args1 := make([]string, 0, nargs + len(list))
+	args1 = append(args1, "/usr/bin/find")
+	args1 = append(args1, list...)
+	args1 = append(args1, "-regextype", "posix-egrep", "-regex", ".*(" + extensions + ")$")
 	fds1 := []*os.File{os.Stdin, pw, os.Stderr}
 	
-	nargs = 4
-	args2 := make([]string, nargs)
-	args2[0] = "/usr/bin/xargs"
-	args2[1] = "/bin/grep"
-	args2[2] = "-nR"
-	args2[3] = reg
+	args2 := []string{"/usr/bin/xargs", "/bin/grep", "-n", reg}
 	fds2 := []*os.File{pr, os.Stdout, os.Stderr}
-	
-	_, err = os.StartProcess(args1[0], args1, os.Environ(), "/", fds1)
+
+	p1, err := os.StartProcess(args1[0], args1, os.Environ(), "/", fds1)
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, err = os.StartProcess(args2[0], args2, os.Environ(), "/", fds2)
+	pw.Close()
+	
+	p2, err := os.StartProcess(args2[0], args2, os.Environ(), "/", fds2)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pr.Close()
+	
+	_, err = os.Wait(p1.Pid, os.WSTOPPED)
 	if err != nil {
 		log.Fatal(err)
 	}	
+	_, err = os.Wait(p2.Pid, os.WSTOPPED)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
-
 
 func findFile(include string, list []string) {
 	for _,includeDir := range list {

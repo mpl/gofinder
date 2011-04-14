@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"gob"
+//	"io/ioutil"
+	"json"
 	"log"
 	"net"
 	"os"
@@ -13,11 +15,7 @@ import (
 const addKw = "add"
 const listKw = "list"
 const setKw = "set"
-
-const cExt = `\.h|\.c`
-const cppExt = `\.h|\.cc`
-const allExt = cExt + "|" + cppExt + "|" + fortranExt
-
+const all = "all"
 const (
 	regex = iota
 	file
@@ -33,11 +31,13 @@ const (
 var (
 	daemon = flag.Bool("d", false, "starts the gofind server")
 	reg = flag.String("r", "", "regexp to search for")
+	langsFile = flag.String("l", "", "json file with languages infos")
+	port = flag.String("p", "2020", "listening port")
 	help = flag.Bool("h", false, "show this help")
 )
 
-func sendCommand(code int, what string, where int) {
-	c, err := net.Dial("tcp", "", "localhost:2020")
+func sendCommand(code int, what string, where string) {
+	c, err := net.Dial("tcp", "", "localhost:" + *port)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,6 +47,39 @@ func sendCommand(code int, what string, where int) {
 		log.Fatal("encode error:", err)
 	}	
 	c.Close()
+}
+
+type language struct {
+	Name string
+	Locations []string
+	Ext string
+}
+
+func loadLanguages(file string) {
+	var loaded []language
+	r, err := os.Open(file, os.O_RDONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	dec := json.NewDecoder(r)
+	err = dec.Decode(&loaded)
+	if err != nil {
+		log.Fatal(err)
+	}	
+	for _,v := range loaded {
+		langs[v.Name] = v
+	}
+	//update allCode
+	allLangs := language{Name:all}
+	for _,v := range langs {
+		allLangs.Ext = allLangs.Ext + v.Ext + "|"
+		for _,l := range v.Locations {
+			allLangs.Locations = append(allLangs.Locations, l)
+		}
+	}
+	allLangs.Ext = allLangs.Ext[0:len(allLangs.Ext)-1]
+	langs[allLangs.Name] = allLangs
+	r.Close()
 }
 
 func usage() {
@@ -65,9 +98,12 @@ func main() {
 	if *help {
 		usage()
 	}
-	
+
 	if flag.NArg() == 0 {
 		if *daemon {
+			if *langsFile != "" {
+				loadLanguages(*langsFile)
+			}
 			listen()
 			return
 		}
@@ -75,14 +111,13 @@ func main() {
 			usage()
 		}
 		println("regexp: "+*reg)
-		sendCommand(regex, *reg, allZones)
+		sendCommand(regex, *reg, "")
 		return
 	}
 
 	arg0 := flag.Args()[0]
 	arg1 := ""
 	arg2 := ""
-	where := allZones
 	chorded := strings.Fields(arg0)
 	switch len(chorded) {
 	case 1:
@@ -106,30 +141,21 @@ func main() {
 		usage()
 	}	
 
-	switch arg1 {
-	case "fortran":
-		where = fortranZone
-	case "cpp":
-		where = cppZone
-	default:
-		where = allZones
-	}
 	switch {
 	case fortranCallValidator.MatchString(arg0):
-		sendCommand(fortranSubroutine, arg1, fortranZone)
+		sendCommand(fortranSubroutine, arg1, arg1)
 	case fortranUseModuleValidator.MatchString(arg0):
-		sendCommand(fortranModule, arg1, fortranZone)
+		sendCommand(fortranModule, arg1, arg1)
 	case arg0 == addKw:
 		if flag.NArg() < 3 {
 			usage()
 		}
-		sendCommand(addLoc, arg2, where)
+		sendCommand(addLoc, arg2, arg1)
 	case arg0 == listKw:
-		sendCommand(listLocs, "", where)
+		sendCommand(listLocs, "", arg1)
 	case arg0 == setKw:
-		sendCommand(setLang, arg1, where)
+		sendCommand(setLang, arg1, arg1)
 	default:
-// Y U NO WORK?
-		sendCommand(file, arg0, 9000)
+		sendCommand(file, arg0, arg1)
 	}
 }
