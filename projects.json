@@ -1,6 +1,6 @@
 [
 {"Name":"projA",
-"Language":"c",
+"Language":"fortran",
 "Locations":["/home/foo/fortran"],
 "Exts":["\\.f90"]},
 {"Name":"projB",
