@@ -4,11 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"gob"
-//	"io/ioutil"
+	//	"io/ioutil"
 	"json"
 	"log"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -21,23 +22,23 @@ const (
 	file
 	fortranSubroutine
 	fortranModule
+	cppClassMethod
+	cppClassMember
+	cppMethod
 	addLoc
 	listLocs
-	setLang
+	setProj
 )
 
-//TODO: make a server of it. takes message to add/set includes, languages, etc...
-//TODO: use json as a config files for all the languages, so that user can add them without touching source.
 var (
-	daemon = flag.Bool("d", false, "starts the gofind server")
-	reg = flag.String("r", "", "regexp to search for")
-	langsFile = flag.String("l", "", "json file with languages infos")
-	port = flag.String("p", "2020", "listening port")
-	help = flag.Bool("h", false, "show this help")
+	daemon    = flag.Bool("d", false, "starts the gofind server")
+	reg       = flag.String("r", "", "regexp to search for")
+	port      = flag.String("p", "2020", "listening port")
+	help      = flag.Bool("h", false, "show this help")
 )
 
 func sendCommand(code int, what string, where string) {
-	c, err := net.Dial("tcp", "", "localhost:" + *port)
+	c, err := net.Dial("tcp", "localhost:"+*port)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,19 +46,20 @@ func sendCommand(code int, what string, where string) {
 	err = enc.Encode(msg{code, what, where})
 	if err != nil {
 		log.Fatal("encode error:", err)
-	}	
+	}
 	c.Close()
 }
 
-type language struct {
-	Name string
+type project struct {
+	Name      string
+	Language string
 	Locations []string
-	Ext string
+	Exts      []string
 }
 
-func loadLanguages(file string) {
-	var loaded []language
-	r, err := os.Open(file, os.O_RDONLY, 0644)
+func loadProjects(file string) {
+	var loaded []project
+	r, err := os.Open(file)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -65,31 +67,31 @@ func loadLanguages(file string) {
 	err = dec.Decode(&loaded)
 	if err != nil {
 		log.Fatal(err)
-	}	
-	for _,v := range loaded {
-		langs[v.Name] = v
+	}
+	for _, v := range loaded {
+		projects[v.Name] = v
 	}
 	//update allCode
-	allLangs := language{Name:all}
-	for _,v := range langs {
-		allLangs.Ext = allLangs.Ext + v.Ext + "|"
-		for _,l := range v.Locations {
-			allLangs.Locations = append(allLangs.Locations, l)
+	allProjects := project{Name: all}
+	for _, v := range projects {
+		allProjects.Exts = append(allProjects.Exts, v.Exts...)
+		for _, l := range v.Locations {
+			allProjects.Locations = append(allProjects.Locations, l)
 		}
 	}
-	allLangs.Ext = allLangs.Ext[0:len(allLangs.Ext)-1]
-	langs[allLangs.Name] = allLangs
+	projects[allProjects.Name] = allProjects
+	filePathValidator = regexp.MustCompile(".*(" + strings.Join(allProjects.Exts, "|") + ")$")	
 	r.Close()
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: \n\t gofind -d \n");
-	fmt.Fprintf(os.Stderr, "\t gofind file_path \n");
-	fmt.Fprintf(os.Stderr, "\t gofind -r regexp \n");
-	fmt.Fprintf(os.Stderr, "\t gofind cmd \n");
-//TODO: explain cmd
-	flag.PrintDefaults();
-	os.Exit(2);
+	fmt.Fprintf(os.Stderr, "usage: \n\t gofind -d projects.json \n")
+	fmt.Fprintf(os.Stderr, "\t gofind classname|filename|... \n")
+	fmt.Fprintf(os.Stderr, "\t gofind -r regexp \n")
+	fmt.Fprintf(os.Stderr, "\t gofind list [projectname] \n")
+	fmt.Fprintf(os.Stderr, "\t gofind set [projectname] \n")
+	flag.PrintDefaults()
+	os.Exit(2)
 }
 
 func main() {
@@ -98,24 +100,23 @@ func main() {
 	if *help {
 		usage()
 	}
-
+	
 	if flag.NArg() == 0 {
-		if *daemon {
-			if *langsFile != "" {
-				loadLanguages(*langsFile)
-			}
-			listen()
-			return
-		}
 		if *reg == "" {
 			usage()
 		}
-		println("regexp: "+*reg)
+		println("regexp: " + *reg)
 		sendCommand(regex, *reg, "")
 		return
 	}
 
 	arg0 := flag.Args()[0]
+	if *daemon {
+		loadProjects(arg0)
+		listen()
+		return
+	}
+
 	arg1 := ""
 	arg2 := ""
 	chorded := strings.Fields(arg0)
@@ -127,7 +128,6 @@ func main() {
 			if flag.NArg() >= 3 {
 				arg2 = flag.Args()[2]
 			}
-//TODO: usage if > 3
 		}
 	case 3:
 		// from chording
@@ -139,13 +139,18 @@ func main() {
 		arg1 = chorded[1]
 	default:
 		usage()
-	}	
+	}
 
 	switch {
+	case cppMethodValidator.MatchString(arg0) || cppMemberValidator.MatchString(arg0):
+		sendCommand(cppMethod, arg0, arg1)	
+	case cppClassMethodValidator.MatchString(arg0):
+		sendCommand(cppClassMethod, arg0, arg1)	
 	case fortranCallValidator.MatchString(arg0):
 		sendCommand(fortranSubroutine, arg1, arg1)
 	case fortranUseModuleValidator.MatchString(arg0):
 		sendCommand(fortranModule, arg1, arg1)
+//TODO: remove?
 	case arg0 == addKw:
 		if flag.NArg() < 3 {
 			usage()
@@ -154,7 +159,7 @@ func main() {
 	case arg0 == listKw:
 		sendCommand(listLocs, "", arg1)
 	case arg0 == setKw:
-		sendCommand(setLang, arg1, arg1)
+		sendCommand(setProj, arg1, arg1)
 	default:
 		sendCommand(file, arg0, arg1)
 	}

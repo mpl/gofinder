@@ -1,0 +1,14 @@
+[
+{"Name":"projA",
+"Language":"c",
+"Locations":["/home/foo/fortran"],
+"Exts":["\\.f90"]},
+{"Name":"projB",
+"Language":"c++",
+"Locations":["/home/foo/cpp/include", "/home/foo/cpp/source"],
+"Exts":["\\.h","\\.cc"]},
+{"Name":"projC",
+"Language":"c",
+"Locations":["/home/foo/c"],
+"Exts":["\\.h","\\.c"]}
+]
