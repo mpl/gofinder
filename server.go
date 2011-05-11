@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"gob"
 	"log"
 	"net"
@@ -228,6 +229,10 @@ func openFile(relPath string, list []string) os.Error {
 	fullPath := findFile(relPath, list)
 	if fullPath == "" {
 		return os.ENOENT
+	}
+	if *noplumb {
+		fmt.Println(fullPath)
+		return nil
 	}
 	port, err := plumb.Open("send", plan9.OWRITE)
 	if err != nil {

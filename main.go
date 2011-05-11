@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"gob"
-	//	"io/ioutil"
 	"json"
 	"log"
 	"net"
@@ -34,6 +33,7 @@ var (
 	daemon    = flag.Bool("d", false, "starts the gofind server")
 	reg       = flag.String("r", "", "regexp to search for")
 	port      = flag.String("p", "2020", "listening port")
+	noplumb   = flag.Bool("noplumb", false, "do not use the plumber/acme")
 	help      = flag.Bool("h", false, "show this help")
 )
 
