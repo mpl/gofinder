@@ -5,6 +5,7 @@ TARG=gofind
 GOFILES=\
 	c++.go		\
 	fortran.go	\
+	go.go				\
 	main.go		\
 	server.go
 

@@ -24,6 +24,7 @@ const (
 	cppClassMethod
 	cppClassMember
 	cppMethod
+	goPackage
 	addLoc
 	listLocs
 	setProj
@@ -141,6 +142,7 @@ func main() {
 		usage()
 	}
 
+//TODO: check the language before switching on the validators? (because some validators could apply to different languages.
 	switch {
 	case cppMethodValidator.MatchString(arg0) || cppMemberValidator.MatchString(arg0):
 		sendCommand(cppMethod, arg0, arg1)	
@@ -150,6 +152,8 @@ func main() {
 		sendCommand(fortranSubroutine, arg1, arg1)
 	case fortranUseModuleValidator.MatchString(arg0):
 		sendCommand(fortranModule, arg1, arg1)
+	case goPackageValidator.MatchString(arg0):
+		sendCommand(goPackage, arg0, arg1)
 //TODO: remove?
 	case arg0 == addKw:
 		if flag.NArg() < 3 {

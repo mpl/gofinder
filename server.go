@@ -63,7 +63,7 @@ func serve(conn net.Conn) {
 		if !filePathValidator.MatchString(m.What) {
 			patternTofileName(m.What, *where)
 		}	else {	
-			openFile(m.What, *where)
+			openFile(m.What, *where, false)
 		}
 	case cppMethod:
 		findCppMethod(m.What)
@@ -73,6 +73,8 @@ func serve(conn net.Conn) {
 		findFortranSubroutine(m.What)
 	case fortranModule:
 		findFortranModule(m.What)
+	case goPackage:
+		openFile(strings.Replace(m.What, `"`, "", -1), *where, true)
 	case listLocs:
 		listLocations(*where)
 	case setProj:
@@ -90,7 +92,7 @@ func patternTofileName(what string, where []string) {
 		for _,v := range projects {
 			for _,s := range v.Exts {
 				ext := strings.Replace(s, "\\", "", -1) 
-				err := openFile(what + ext, v.Locations)
+				err := openFile(what + ext, v.Locations, false)
 				if err == nil {
 					return
 				}
@@ -101,7 +103,7 @@ func patternTofileName(what string, where []string) {
 		if ok {
 			for _,s := range v.Exts {
 				ext := strings.Replace(s, "\\", "", -1) 
-				openFile(what + ext, where)
+				openFile(what + ext, where, false)
 			}
 		}
 	}
@@ -225,8 +227,63 @@ func findFile(relPath string, list []string) string {
 	return ""
 }
 
-func openFile(relPath string, list []string) os.Error {
-	fullPath := findFile(relPath, list)
+func findDir(relPath string, list []string) string {
+	//in case chording (or voluntary input) gave us a full path already
+	if relPath[0] == '/' {
+		return relPath
+	}
+	for _, includeDir := range list {
+		fullPath := path.Join(includeDir, relPath)
+		_, err := os.Lstat(fullPath)
+		if err == nil {
+			return fullPath
+		} else {
+			//search for other dirs in current dir
+			currentDir, err := os.Open(includeDir)
+			if err != nil {
+				log.Print(err)
+//TODO: do we remove a dir when it's bogus? for now, just ignore it
+				// apparently it's not ENOENT that we hit. investigate.
+				continue
+			}
+			names, err := currentDir.Readdirnames(-1)
+			if err != nil {
+				log.Fatal(err)
+			}
+			currentDir.Close()
+			var fi *os.FileInfo
+			newdir := ""
+			for _, name := range names {
+				newdir = path.Join(includeDir, name)
+				fi, err = os.Lstat(newdir)
+				if err != nil {
+					log.Fatal(err)
+				}
+				if fi.IsDirectory() {
+					fullPath = path.Join(newdir, relPath)
+					fi, err = os.Lstat(fullPath)
+					if err == nil {
+						return fullPath
+					}
+					// recurse
+					temp := findDir(relPath, []string{newdir})
+					if temp != "" {
+						return temp
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func openFile(relPath string, list []string, isDir bool) os.Error {
+	fullPath := ""
+	if isDir {
+		fullPath = findDir(relPath, list)
+	} else {
+		fullPath = findFile(relPath, list)
+	}
 	if fullPath == "" {
 		return os.ENOENT
 	}
@@ -241,7 +298,7 @@ func openFile(relPath string, list []string) os.Error {
 	defer port.Close()
 	port.Send(&plumb.Msg{
 		Src:  "gofinder",
-		Dst:  "",
+		Dst:  "edit",
 		WDir: "/",
 		Kind: "text",
 		Attr: map[string]string{},
