@@ -1,0 +1,10 @@
+[
+{"Name":"proj2",
+"Languages":["fortran","go"],
+"Locations":["/home/glenda/foobar", "/home/glenda/foobarbaz", "/home/glenda/go"],
+"Exts":["\\.f90","\\.go"]},
+{"Name":"proj1",
+"Languages":["c++"],
+"Locations":["/home/glenda/foo", "/home/glenda/bar"],
+"Exts":["\\.cpp","\\.h"]}
+]

@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+//TODO: redo it all to work with the acme ui
 const cpp = "c++"
 const (
 	member = iota
@@ -16,10 +17,17 @@ const (
 	method
 )
 
+const (
+	cppInclude = "include"
+)
+
 var (
-	cppMethodValidator = regexp.MustCompile(`^.*\..*\);?$`)
+	cppMethodValidator      = regexp.MustCompile(`^.*\..*\);?$`)
 	cppClassMethodValidator = regexp.MustCompile(`^.*::.*\($`)
-	cppMemberValidator = regexp.MustCompile(`^.*::.*;?$`)
+	cppMemberValidator      = regexp.MustCompile(`^.*::.*;?$`)
+//	cppElements = []string{"class", "method", cppInclude}
+	cppElements = []string{cppInclude}
+	cppExts = []string{`\.cpp`,`\.h`}
 )
 
 //TODO: merge this one and the one below
@@ -31,15 +39,13 @@ func findCppClassMethod(input string) {
 	}
 	// first parse class name and find the file
 	// assume class is in file with same name
-//TODO: do not assume what's above
-	fields := strings.Split(input, "::", -1)
-	className := strings.Split(fields[0], "<", -1)[0]
-	method := fields[1][0:len(fields[1])-1]
+	//TODO: do not assume what's above
+	fields := strings.Split(input, "::")
+	className := strings.Split(fields[0], "<")[0]
+	method := fields[1][0 : len(fields[1])-1]
 	methodValidator := regexp.MustCompile(className + ".*::" + method)
-	println(className)
-//TODO: do not hardcode the extension
-	fullPath := findFile(className + ".cc", v.Locations)
-	println(fullPath)
+	//TODO: do not hardcode the extension
+	fullPath := findFile(className+".cc", v.Locations)
 	// then find exact location in the file
 	f, err := os.Open(fullPath)
 	if err != nil {
@@ -55,7 +61,7 @@ func findCppClassMethod(input string) {
 			f.Close()
 			return
 		}
-//TODO: template and args matching ?
+		//TODO: template and args matching ?
 		if methodValidator.MatchString(line) {
 			break
 		}
@@ -66,7 +72,7 @@ func findCppClassMethod(input string) {
 }
 
 //TODO: merge this one and the one above
-func findCppMethod(input string) {
+func findCppMethod(input string, where string) {
 	v, ok := projects["casa"]
 	if !ok {
 		log.Printf("%s not a key in projects \n", "casa")
@@ -75,19 +81,21 @@ func findCppMethod(input string) {
 	var pattern *regexp.Regexp
 	fullPath := ""
 	altSearch := ""
+	// wrap it in a block because of forbidden jumps with goto
+	{
 	// first parse class name and find the file
 	// assume class is in file with same name
 	if !strings.Contains(input, "(") {
 		// look for a class member
-		fields := strings.Split(input, "::", -1)
-//TODO: probably needs to filter "static", "const", etc...
-		className := strings.TrimSpace(strings.Split(fields[0], "<", -1)[0])
-		classMember := strings.Split(fields[1], ";", -1)[0]
+		fields := strings.Split(input, "::")
+		//TODO: probably needs to filter "static", "const", etc...
+		className := strings.TrimSpace(strings.Split(fields[0], "<")[0])
+		classMember := strings.Split(fields[1], ";")[0]
 		pattern = regexp.MustCompile(".* +" + classMember + " *;")
-		fullPath = findFile(className + ".h", v.Locations)
+		fullPath = findFile(className+".h", v.Locations)
 		altSearch = classMember
 	} else {
-		firstCut := strings.Split(input, ".", -1)
+		firstCut := strings.Split(input, ".")
 		l := len(firstCut)
 		if l < 2 {
 			log.Printf("pb when Fielding \n")
@@ -96,7 +104,7 @@ func findCppMethod(input string) {
 		// do not count calls in parentheses 
 		pieces := []string{firstCut[0], firstCut[1]}
 		parenCount := 0
-		for i:=2; i<l; i++ {
+		for i := 2; i < l; i++ {
 			parenCount += strings.Count(firstCut[i-1], "(")
 			parenCount -= strings.Count(firstCut[i-1], ")")
 			if parenCount == 0 {
@@ -108,13 +116,13 @@ func findCppMethod(input string) {
 			log.Printf("pb when Fielding \n")
 			return
 		}
-		finalMethod := strings.Split(pieces[l-1], "(", -1)[0]
+		finalMethod := strings.Split(pieces[l-1], "(")[0]
 		className := strings.TrimSpace(pieces[0])
 		line := ""
-		for i:=1; i < l-1; i++ {
-			method := strings.Split(pieces[i], "(", -1)[0]
-//TODO: do not hardcode the extension
-			fullPath = findFile(className + ".h", v.Locations)
+		for i := 1; i < l-1; i++ {
+			method := strings.Split(pieces[i], "(")[0]
+			//TODO: do not hardcode the extension
+			fullPath = findFile(className+".h", v.Locations)
 			// then find exact location in the file
 			f, err := os.Open(fullPath)
 			if err != nil {
@@ -132,8 +140,8 @@ func findCppMethod(input string) {
 					log.Printf("%v \n", err)
 					return
 				}
-//TODO: template and args matching ?
-				if strings.Contains(line, " " + method) {
+				//TODO: template and args matching ?
+				if strings.Contains(line, " "+method) {
 					break
 				}
 			}
@@ -143,8 +151,8 @@ func findCppMethod(input string) {
 				log.Printf("pb when Fielding \n")
 				return
 			}
-//TODO: better method: take the one that is just before the method name
-			for i:= 0; i< len(fields); i++ {
+			//TODO: better method: take the one that is just before the method name
+			for i := 0; i < len(fields); i++ {
 				if fields[i] != "const" || fields[i] != "static" {
 					className = fields[i]
 					break
@@ -152,13 +160,13 @@ func findCppMethod(input string) {
 			}
 			//now strip "&" or "*"
 			le := len(className) - 1
-			if className[le] == '&' || className[le] == '*'	{
+			if className[le] == '&' || className[le] == '*' {
 				className = className[0:le]
 			}
 		}
-//TODO: replace it with something that returns but doesn't fuck up the server when failing
+		//TODO: replace it with something that returns but doesn't fuck up the server when failing
 		pattern = regexp.MustCompile(className + ".*::" + finalMethod)
-		fullPath = findFile(className + ".cc", v.Locations)
+		fullPath = findFile(className+".cc", v.Locations)
 		altSearch = ".*::" + finalMethod
 	}
 	// then find exact location in the file
@@ -180,7 +188,7 @@ func findCppMethod(input string) {
 			log.Printf("%v \n", err)
 			return
 		}
-//TODO: template and args matching ?
+		//TODO: template and args matching ?
 		if pattern.MatchString(line) {
 			break
 		}
@@ -189,6 +197,7 @@ func findCppMethod(input string) {
 	f.Close()
 	fmt.Printf("%s:%d \n", fullPath, ln)
 	return
+	}
 happyEnding:
 	findRegex(altSearch, v.Locations, v.Exts)
 }

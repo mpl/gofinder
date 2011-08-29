@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"gob"
 	"log"
 	"net"
@@ -14,8 +13,8 @@ import (
 )
 
 var (
-	proj  = ""
-	projects = make(map[string]project, 1)
+	globalProj  = ""
+	projects map[string]project
 	filePathValidator *regexp.Regexp
 )
 
@@ -47,18 +46,41 @@ func serve(conn net.Conn) {
 	if err != nil {
 		log.Fatal("decode error:", err)
 	}
-	if m.Where == "" {
-		m.Where = proj
+	var where *[]string
+	var proj project
+	var exts []string
+	var ok bool
+	if !strings.Contains(m.Where, ":") {
+		log.Printf("incomplete m.Where message: %s \n", m.Where)
+		return
 	}
-	v, ok := projects[m.Where]
+	whereSplit := strings.Split(m.Where, ":")
+	proj, ok = projects[whereSplit[0]]
 	if !ok {
-		v = projects[all]
+		log.Print("not a project name: %s \n", whereSplit[0])
+		return
 	}
-	where := &(v.Locations)
-	
+	sub := whereSplit[1]
+	switch sub {
+	case all:
+		where = &(proj.Locations)
+		exts = proj.Exts
+	case location:
+		where = &[]string{whereSplit[2]}
+		exts = proj.Exts
+	default:
+		// it's a lang -> search everywhere but only with exts of the lang
+		where = &(proj.Locations)
+		exts, ok = allExts[sub]
+		if !ok {
+			log.Printf("%s not a key in allExts\n", sub)
+			return
+		}
+	}
+
 	switch m.Action {
 	case regex:
-		findRegex(m.What, *where, v.Exts)
+		findRegex(m.What, *where, exts)
 	case file:
 		if !filePathValidator.MatchString(m.What) {
 			patternTofileName(m.What, *where)
@@ -66,19 +88,21 @@ func serve(conn net.Conn) {
 			openFile(m.What, *where, false)
 		}
 	case cppMethod:
-		findCppMethod(m.What)
+		findCppMethod(m.What, m.Where)
 	case cppClassMethod:
-		findCppClassMethod(m.What)		
-	case fortranSubroutine:
-		findFortranSubroutine(m.What)
-	case fortranModule:
-		findFortranModule(m.What)
+		findCppClassMethod(m.What)
+	case cppInc:
+		openFile(m.What, *where, false)
+	case fortSub:
+		findFortranSubroutine(m.What, *where)
+	case fortMod:
+		findFortranModule(m.What, *where)
+	case fortFunc:
+		findFortranFunction(m.What, *where)
 	case goPackage:
 		openFile(strings.Replace(m.What, `"`, "", -1), *where, true)
-	case listLocs:
-		listLocations(*where)
-	case setProj:
-		setProject(m.What)
+	case goFunc:
+		findGoFunc(m.What, *where)
 	default:
 		println(m.Action, m.What)
 	}
@@ -88,7 +112,7 @@ func serve(conn net.Conn) {
 func patternTofileName(what string, where []string) {
 	// assume it's a class/package/etc name and try to find what's the most usual guess depending on the language
 	// if no project is set, just go through all of them until there's a match
-	if proj ==  "" {
+	if globalProj ==  "" {
 		for _,v := range projects {
 			for _,s := range v.Exts {
 				ext := strings.Replace(s, "\\", "", -1) 
@@ -98,8 +122,9 @@ func patternTofileName(what string, where []string) {
 				}
 			}				
 		}
+//TODO: probably remove that case later
 	} else {
-		v, ok := projects[proj]
+		v, ok := projects[globalProj]
 		if ok {
 			for _,s := range v.Exts {
 				ext := strings.Replace(s, "\\", "", -1) 
@@ -109,42 +134,10 @@ func patternTofileName(what string, where []string) {
 	}
 }
 
-func setProject(prj string) {
-	_, ok := projects[prj]
-	if ok {
-		proj = prj
-	}
-}
-
-// it's so easy to just add one to the json file and restart the server that I don't think this functionality is worth keeping/maintaining. we'll see.
-func addLocation(location string, where string) {
-	p, ok := projects[where]
-	if !ok {
-		log.Printf("%s not a key in projects \n", where)
-		return
-	}
-	p.Locations = append(p.Locations, location)
-	projects[where] = p
-	// update allCode as well
-	if where != all {
-		p, ok := projects[all]
-		if !ok {
-			log.Fatal("%s not a key in projects \n", where)
-			return
-		}
-		p.Locations = append(p.Locations, location)
-		projects[all] = p
-	}
-}
-
-func listLocations(where []string) {
-	for _, s := range where {
-		println(s)
-	}
-}
-
 //TODO: follow symlinks?
+//TODO: write to acme win once we replace find and grep with native code
 func findRegex(reg string, list []string, exts []string) {
+	println("regex: " + reg)
 	var err os.Error
 	pr, pw, err := os.Pipe()
 	if err != nil {
@@ -158,7 +151,7 @@ func findRegex(reg string, list []string, exts []string) {
 	args1 = append(args1, "-regextype", "posix-egrep", "-regex", exp)
 	fds1 := []*os.File{os.Stdin, pw, os.Stderr}
 
-	args2 := []string{"/usr/bin/xargs", "/bin/grep", "-n", reg}
+	args2 := []string{"/usr/bin/xargs", "/bin/grep", "-E", "-n", reg}
 	fds2 := []*os.File{pr, os.Stdout, os.Stderr}
 
 	p1, err := os.StartProcess(args1[0], args1, &os.ProcAttr{Dir: "/", Files: fds1})
@@ -277,6 +270,7 @@ func findDir(relPath string, list []string) string {
 	return ""
 }
 
+//TODO: print instead of opening?
 func openFile(relPath string, list []string, isDir bool) os.Error {
 	fullPath := ""
 	if isDir {
@@ -286,10 +280,6 @@ func openFile(relPath string, list []string, isDir bool) os.Error {
 	}
 	if fullPath == "" {
 		return os.ENOENT
-	}
-	if *noplumb {
-		fmt.Println(fullPath)
-		return nil
 	}
 	port, err := plumb.Open("send", plan9.OWRITE)
 	if err != nil {

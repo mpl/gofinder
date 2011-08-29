@@ -1,73 +1,33 @@
 package main
 
 import (
-	"log"
-	"regexp"
 	"strings"
 )
 
-const fortran = "fortran"
-
-var (
-	fortranCallValidator = regexp.MustCompile(".*call.*")
-	fortranUseModuleValidator = regexp.MustCompile(".*use.*")
+const (
+	fortran = "fortran"
+	fortranModule = "module"
+	fortranSubroutine = "subroutine"
+	fortranFunction = "function"
 )
 
-//TODO: factorize 
-func findFortranSubroutine(call string) {
-	if proj ==  "" {
-		// if no specified proj, just go through all fortran projects
-		for _,v := range projects {
-			if v.Language == fortran {
-				//TODO: match the number of args of the subroutine
-				subroutine := ""
-				if strings.Contains(call, "(") {
-					subroutine = strings.TrimSpace(strings.Split(call, "(", -1)[0])
-				} else {
-					subroutine = strings.TrimSpace(call)
-				}
-				findRegex("^subroutine " + subroutine + ` *(.*`,
-					v.Locations, v.Exts)
-			}
-		}
-	} else {
-		v, ok := projects[proj]
-		if !ok {
-			log.Printf("%s not a key in projects \n", proj)
-			return
-		}
-		//TODO: match the number of args of the subroutine
-		subroutine := ""
-		if strings.Contains(call, "(") {
-			subroutine = strings.TrimSpace(strings.Split(call, "(", -1)[0])
-		} else {
-			subroutine = strings.TrimSpace(call)
-		}
-		findRegex("^subroutine " + subroutine + `(.*`,
-			v.Locations, v.Exts)
-	}
+var (
+	fortranElements = []string{fortranModule, fortranSubroutine, fortranFunction}
+	fortranExts = []string{`\.f90`}
+)
+
+func findFortranSubroutine(call string, where []string) {
+	//TODO: match the sig of the subroutine
+	findRegex(`^` + fortranSubroutine + ` +` + strings.TrimSpace(call) + ` *\(.*`,
+		where, fortranExts)
 }
 
-//TODO: factorize 
-func findFortranModule(module string) {
-	if proj ==  "" {
-		// if no specified proj, just go through all fortran projects
-		for _,v := range projects {
-			if v.Language == fortran {
-				//TODO: match the number of args of the subroutine
-				findRegex("^module " + module,
-					v.Locations, v.Exts)
-			}
-		}
-	} else {
-		v, ok := projects[proj]
-		if !ok {
-			log.Printf("%s not a key in projects \n", proj)
-			return
-		}
-		//TODO: match the number of args of the subroutine
-		findRegex("^module " + module,
-			v.Locations, v.Exts)
-	}
+func findFortranModule(module string, where []string) {
+	findRegex(`^` + fortranModule + ` +` + strings.TrimSpace(module),
+		where, fortranExts)
 }
 
+func findFortranFunction(call string, where []string) {
+	findRegex(`^` + fortranFunction + ` +` + strings.TrimSpace(call) +
+	` *\(.*`, where, fortranExts)
+}
