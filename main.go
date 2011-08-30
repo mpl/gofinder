@@ -11,9 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-//	"goplan9.googlecode.com/hg/plan9"
 	"goplan9.googlecode.com/hg/plan9/acme"
-//	"bitbucket.org/fhs/goplumb/plumb"
 )
 
 const (
@@ -29,14 +27,10 @@ const (
 	fortMod
 	fortFunc
 	cppInc
-	cppClassMethod
-	cppClassMember
-	cppMethod
+	cppClassMeth
+	cppClassMemb
 	goPackage
 	goFunc
-	addLoc
-	listLocs
-	setProj
 )
 
 var (
@@ -241,6 +235,10 @@ func dispatchSearch(from string, where string, what string) {
 		switch element {
 		case cppInclude:
 			sendCommand(cppInc, what, proj + ":" + lang)
+		case cppClassMethod:
+			sendCommand(cppClassMeth, what, proj + ":" + lang)
+		case cppClassMember:
+			sendCommand(cppClassMemb, what, proj + ":" + lang)
 		case all:
 			sendCommand(regex, escapeSpecials(what), proj + ":" + lang)
 		}

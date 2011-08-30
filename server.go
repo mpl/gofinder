@@ -87,12 +87,12 @@ func serve(conn net.Conn) {
 		}	else {	
 			openFile(m.What, *where, false)
 		}
-	case cppMethod:
-		findCppMethod(m.What, m.Where)
-	case cppClassMethod:
-		findCppClassMethod(m.What)
 	case cppInc:
 		openFile(m.What, *where, false)
+	case cppClassMeth:
+		findCppClassMethod(m.What, *where)
+	case cppClassMemb:
+		findCppClassMember(m.What, *where)
 	case fortSub:
 		findFortranSubroutine(m.What, *where)
 	case fortMod:
