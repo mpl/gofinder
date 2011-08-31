@@ -23,7 +23,7 @@ The "all" keyword/command will trigger a regexp search (only in the relevant fil
 Same behaviour for the locations, except the search will apply to all the relevant files of the project (defined by the "Exts" field) in the chorded location.
 
 Limitations:
--The search for a go func expects a function name, and only that. It doesn't work (yet) with chained calls, or even methods (with a receiver). This is definitely the next step on the TODO list.
+-The search for a go func expects a function/method name, and only that. It doesn't work (yet) with chained calls, and it will yield all occurrences of both functions and methods (with a receiver) with this name. This is definitely the next step on the TODO list.
 
 -Obviously fortran is the only language pretty well supported. After better func searches for Go, better support for c++ or adding other languages (depending on my needs) are on the agenda.
 
