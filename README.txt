@@ -5,11 +5,11 @@ The resulting acme ui will look like the following.
 Search in: 
 -----------------------------------
 proj1:
-	c++:	include	all
+	c++:	staticMethod	staticMember	include	all
 	/home/glenda/foo	/home/glenda/bar
 proj2:
 	fortran:	module	subroutine	function	all
-	go:	func	all
+	go:	package	func	all
 	/home/glenda/foobar	/home/glenda/foobarbaz	/home/glenda/go
 -----------------------------------
 

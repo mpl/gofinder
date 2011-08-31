@@ -29,7 +29,7 @@ const (
 	cppInc
 	cppClassMeth
 	cppClassMemb
-	goPackage
+	goPack
 	goFunc
 )
 
@@ -217,6 +217,8 @@ func dispatchSearch(from string, where string, what string) {
 		switch element {
 		case goFunction:
 			sendCommand(goFunc, what, proj + ":" + lang)
+		case goPackage:
+			sendCommand(goPack, what, proj + ":" + lang)
 		case all:
 			sendCommand(regex, escapeSpecials(what), proj + ":" + lang)
 		}
@@ -295,7 +297,7 @@ func readDestination(e acme.Event) (string, os.Error) {
 	return "",nil
 }
 
-func eventLoop() {
+func eventLoop(c chan int) {
 		for e := range w.EventChan() {
 			switch e.C2 {
 			case 'x': // execute in tag
@@ -327,8 +329,7 @@ func eventLoop() {
 				w.WriteEvent(e)
 			}
 		}
-		w.CloseFiles()
-		os.Exit(0)
+		c <- 1
 }
 
 func usage() {
@@ -362,12 +363,17 @@ func main() {
 	configFile = flag.Args()[0]
 	loadSyntax()
 	initWindow()
-	go eventLoop()
-	// with the acme ui having a listening server is actually not necessary anymore
-	// however I'm keeping it that way because
+	c := make(chan int)
+	//TODO: window should not start if can't listen
+	go listen(c)
+	go eventLoop(c)
+	<- c
+	w.Ctl("delete")
+	w.CloseFiles()
+	// with an acme ui it's actually not necessary anymore  to have 
+	// a listening server, however I'm keeping it that way because:
 	// 1) it's probably not big of a slowdown to send the requests to a server 
 	// wrt to the searches themselves
 	// 2) it makes for a nice example of using gobs
-	listen()
 
 }

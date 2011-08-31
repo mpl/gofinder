@@ -24,15 +24,19 @@ type msg struct {
 	Where  string
 }
 
-func listen() {
+func listen(c chan int) {
 	ln, err := net.Listen("tcp", ":"+*port)
 	if err != nil {
-		log.Fatalf("listen error: %v", err)
+		log.Printf("listen error: %v", err)
+		c <- 1
+		return
 	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Fatalf("accept error: %v", err)
+			log.Printf("accept error: %v", err)
+			c <- 1
+			return
 		}
 		go serve(conn)
 		log.Printf("Accepted")
@@ -99,8 +103,8 @@ func serve(conn net.Conn) {
 		findFortranModule(m.What, *where)
 	case fortFunc:
 		findFortranFunction(m.What, *where)
-	case goPackage:
-		openFile(strings.Replace(m.What, `"`, "", -1), *where, true)
+	case goPack:
+		openFile(cleanGoPackageLine(m.What), *where, true)
 	case goFunc:
 		findGoFunc(m.What, *where)
 	default:
@@ -270,7 +274,7 @@ func findDir(relPath string, list []string) string {
 	return ""
 }
 
-//TODO: print instead of opening?
+//TODO: restore noplumb option? meh, who uses acme without the plumber anyway?
 func openFile(relPath string, list []string, isDir bool) os.Error {
 	fullPath := ""
 	if isDir {
