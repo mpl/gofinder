@@ -13,7 +13,7 @@ const (
 
 var (
 //	goPackageValidator = regexp.MustCompile(`^( | 	)?"[a-zA-Z]+(/[a-zA-Z]+)*"`)
-	goElements = []string{goPackage, goFunction}
+	goElements = []string{goPackage, goFunction, goType}
 	goExts = []string{`\.go`}
 )
 
@@ -24,5 +24,10 @@ func cleanGoPackageLine(input string) string {
 //TODO: when target is in name, find the right one. (hard. need from).
 func findGoFunc(name string, where []string) {
 	regex := `^` + goFunction + ".*" + name
+	findRegex(regex, where, goExts)
+}
+
+func findGoType(name string, where []string) {
+	regex := `^` + goType + " +" + name
 	findRegex(regex, where, goExts)
 }

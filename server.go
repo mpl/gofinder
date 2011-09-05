@@ -107,6 +107,8 @@ func serve(conn net.Conn) {
 		openFile(cleanGoPackageLine(m.What), *where, true)
 	case goFunc:
 		findGoFunc(m.What, *where)
+	case goTyp:
+		findGoType(m.What, *where)
 	default:
 		println(m.Action, m.What)
 	}

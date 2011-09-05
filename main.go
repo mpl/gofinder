@@ -31,6 +31,7 @@ const (
 	cppClassMemb
 	goPack
 	goFunc
+	goTyp
 )
 
 var (
@@ -219,6 +220,8 @@ func dispatchSearch(from string, where string, what string) {
 			sendCommand(goFunc, what, proj + ":" + lang)
 		case goPackage:
 			sendCommand(goPack, what, proj + ":" + lang)
+		case goType:
+			sendCommand(goTyp, what, proj + ":" + lang)
 		case all:
 			sendCommand(regex, escapeSpecials(what), proj + ":" + lang)
 		}
