@@ -31,6 +31,7 @@ const (
 	cppClassMemb
 	goPack
 	goFunc
+	goMeth
 	goTyp
 )
 
@@ -180,6 +181,9 @@ func dispatchSearch(from string, where string, what string) {
 		return
 	}
 	// sanity checks
+	if what == "" {
+		return
+	}
 	found := false
 	switch lang {
 	case all:
@@ -218,6 +222,8 @@ func dispatchSearch(from string, where string, what string) {
 		switch element {
 		case goFunction:
 			sendCommand(goFunc, what, proj + ":" + lang)
+		case goMethod:
+			sendCommand(goMeth, what, proj + ":" + lang)
 		case goPackage:
 			sendCommand(goPack, what, proj + ":" + lang)
 		case goType:
