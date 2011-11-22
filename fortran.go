@@ -9,10 +9,11 @@ const (
 	fortranModule = "module"
 	fortranSubroutine = "subroutine"
 	fortranFunction = "function"
+	fortranType = "type"
 )
 
 var (
-	fortranElements = []string{fortranModule, fortranSubroutine, fortranFunction}
+	fortranElements = []string{fortranFunction, fortranModule, fortranSubroutine, fortranType}
 	fortranExts = []string{`\.f90`}
 )
 
@@ -30,4 +31,9 @@ func findFortranModule(module string, where []string) {
 func findFortranFunction(call string, where []string) {
 	findRegex(`^` + fortranFunction + ` +` + strings.TrimSpace(call) +
 	` *\(.*`, where, fortranExts)
+}
+
+func findFortranType(call string, where []string) {
+	findRegex(`^ *` + fortranType + ` +` + strings.TrimSpace(call) +
+	` *$`, where, fortranExts)
 }

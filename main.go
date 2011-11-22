@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"gob"
@@ -15,17 +16,18 @@ import (
 )
 
 const (
-	all = "all"
-	NBUF = 512
+	all      = "all"
+	NBUF     = 512
 	location = "loc"
 )
 
 const (
 	regex = iota
 	file
-	fortSub
-	fortMod
 	fortFunc
+	fortMod
+	fortSub
+	fortType
 	cppInc
 	cppClassMeth
 	cppClassMemb
@@ -36,23 +38,23 @@ const (
 )
 
 var (
-	port      = flag.String("p", "2020", "listening port")
-	help      = flag.Bool("h", false, "show this help")
+	port = flag.String("p", "2020", "listening port")
+	help = flag.Bool("h", false, "show this help")
 )
 
 var (
-	w        *acme.Win
-	PLAN9    = os.Getenv("PLAN9")
-	configFile string
-	lineBuf []byte
+	w              *acme.Win
+	PLAN9          = os.Getenv("PLAN9")
+	configFile     string
+	lineBuf        []byte
 	syntaxElements map[string][]string
-	allExts map[string][]string
-	projectWord = regexp.MustCompile(`^[a-zA-Z]+:`)
-	resZone string
+	allExts        map[string][]string
+	projectWord    = regexp.MustCompile(`^[a-zA-Z]+:`)
+	resZone        string
 )
 
 func initWindow() {
-	var err os.Error = nil
+	var err error = nil
 	w, err = acme.New()
 	if err != nil {
 		log.Fatal(err)
@@ -68,7 +70,7 @@ func initWindow() {
 	lineBuf = make([]byte, NBUF)
 }
 
-func printUi() os.Error {
+func printUi() error {
 	err := w.Addr("%s", "#0,")
 	if err != nil {
 		return err
@@ -77,19 +79,19 @@ func printUi() os.Error {
 	w.Write("body", []byte("Search in: \n"))
 	w.Write("body", []byte("-----------------------------------"))
 	w.Write("body", []byte("\n"))
-	for _,v := range projects {
+	for _, v := range projects {
 		w.Write("body", []byte(v.Name+":"))
 		w.Write("body", []byte("\n"))
-		for _,l := range v.Languages {
-			w.Write("body", []byte("	" + l + ":"))
-			for _,el := range syntaxElements[l] {
-				w.Write("body", []byte("	" + el))
+		for _, l := range v.Languages {
+			w.Write("body", []byte("	"+l+":"))
+			for _, el := range syntaxElements[l] {
+				w.Write("body", []byte("	"+el))
 			}
-			w.Write("body", []byte("	" + all))
+			w.Write("body", []byte("	"+all))
 			w.Write("body", []byte("\n"))
 		}
-		for _,l := range v.Locations {
-			w.Write("body", []byte("	" + l))
+		for _, l := range v.Locations {
+			w.Write("body", []byte("	"+l))
 		}
 		w.Write("body", []byte("\n"))
 	}
@@ -107,7 +109,7 @@ func printUi() os.Error {
 	return nil
 }
 
-func reloadConf(configFile string) os.Error {
+func reloadConf(configFile string) error {
 	err := loadProjects(configFile)
 	if err != nil {
 		return err
@@ -139,7 +141,7 @@ type project struct {
 	Exts      []string
 }
 
-func loadProjects(file string) os.Error {
+func loadProjects(file string) error {
 	var loaded []project
 	r, err := os.Open(file)
 	if err != nil {
@@ -155,7 +157,7 @@ func loadProjects(file string) os.Error {
 	for _, v := range loaded {
 		projects[v.Name] = v
 	}
-	return nil	
+	return nil
 }
 
 func escapeSpecials(s string) string {
@@ -169,9 +171,9 @@ func escapeSpecials(s string) string {
 }
 
 func dispatchSearch(from string, where string, what string) {
-//println(from)
-//println(where)
-//println(what)
+	//println(from)
+	//println(where)
+	//println(what)
 	whereSplit := strings.Split(where, ":")
 	proj := whereSplit[0]
 	lang := whereSplit[1]
@@ -192,7 +194,7 @@ func dispatchSearch(from string, where string, what string) {
 	case location:
 		// search only in a specific location (path)
 		loc := whereSplit[2]
-		for _,l := range v.Locations {
+		for _, l := range v.Locations {
 			if l == loc {
 				found = true
 				break
@@ -204,7 +206,7 @@ func dispatchSearch(from string, where string, what string) {
 		}
 	default:
 		// search only in one specific language (using the files extensions)
-		for _,l := range v.Languages {
+		for _, l := range v.Languages {
 			if l == lang {
 				found = true
 				break
@@ -216,53 +218,55 @@ func dispatchSearch(from string, where string, what string) {
 		}
 	}
 	element := whereSplit[2]
-//TODO: rejoin the rest of where in case some ":" are present
+	//TODO: rejoin the rest of where in case some ":" are present
 	switch lang {
 	case golang:
 		switch element {
 		case goFunction:
-			sendCommand(goFunc, what, proj + ":" + lang)
+			sendCommand(goFunc, what, proj+":"+lang)
 		case goMethod:
-			sendCommand(goMeth, what, proj + ":" + lang)
+			sendCommand(goMeth, what, proj+":"+lang)
 		case goPackage:
-			sendCommand(goPack, what, proj + ":" + lang)
+			sendCommand(goPack, what, proj+":"+lang)
 		case goType:
-			sendCommand(goTyp, what, proj + ":" + lang)
+			sendCommand(goTyp, what, proj+":"+lang)
 		case all:
-			sendCommand(regex, escapeSpecials(what), proj + ":" + lang)
+			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
 		}
 	case fortran:
 		switch element {
-		case fortranSubroutine:
-			sendCommand(fortSub, what, proj + ":" + lang)
-		case fortranModule:
-			sendCommand(fortMod, what, proj + ":" + lang)
 		case fortranFunction:
-			sendCommand(fortFunc, what, proj + ":" + lang)
+			sendCommand(fortFunc, what, proj+":"+lang)
+		case fortranModule:
+			sendCommand(fortMod, what, proj+":"+lang)
+		case fortranType:
+			sendCommand(fortType, what, proj+":"+lang)
+		case fortranSubroutine:
+			sendCommand(fortSub, what, proj+":"+lang)
 		case all:
-			sendCommand(regex, escapeSpecials(what), proj + ":" + lang)
+			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
 		}
 	case cpp:
 		switch element {
 		case cppInclude:
-			sendCommand(cppInc, what, proj + ":" + lang)
+			sendCommand(cppInc, what, proj+":"+lang)
 		case cppClassMethod:
-			sendCommand(cppClassMeth, what, proj + ":" + lang)
+			sendCommand(cppClassMeth, what, proj+":"+lang)
 		case cppClassMember:
-			sendCommand(cppClassMemb, what, proj + ":" + lang)
+			sendCommand(cppClassMemb, what, proj+":"+lang)
 		case all:
-			sendCommand(regex, escapeSpecials(what), proj + ":" + lang)
+			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
 		}
 	case all:
-		sendCommand(regex, what, proj + ":" + all)
+		sendCommand(regex, what, proj+":"+all)
 	default:
 		// it's a path/location
 		loc := lang
-		sendCommand(regex, escapeSpecials(what), proj + ":" + loc + ":" + element)
+		sendCommand(regex, escapeSpecials(what), proj+":"+loc+":"+element)
 	}
 }
 
-func readDestination(e acme.Event) (string, os.Error) {
+func readDestination(e acme.Event) (string, error) {
 	// read current line
 	addr := "#" + fmt.Sprint(e.OrigQ0) + "+--"
 	err := w.Addr("%s", addr)
@@ -276,7 +280,7 @@ func readDestination(e acme.Event) (string, os.Error) {
 	if lineBuf[0] != '	' {
 		proj := strings.Split(string(lineBuf), ":")[0]
 		if !projectWord.MatchString(proj + ":") {
-			return "", os.NewError("wrong clic")
+			return "", errors.New("wrong clic")
 		}
 		return proj + ":" + all, nil
 	}
@@ -303,42 +307,42 @@ func readDestination(e acme.Event) (string, os.Error) {
 			return proj + ":" + language, nil
 		}
 	}
-	return "",nil
+	return "", nil
 }
 
 func eventLoop(c chan int) {
-		for e := range w.EventChan() {
-			switch e.C2 {
-			case 'x': // execute in tag
-				switch string(e.Text) {
-				case "Del":
-					w.Ctl("delete")
-				case "Reload":
-					err := reloadConf(configFile)
-					if err != nil {
-						log.Print(err)
-					}
-				default:
-					w.WriteEvent(e)
-				}
-			case 'X': // execute in body
-				dest, err := readDestination(*e)
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x': // execute in tag
+			switch string(e.Text) {
+			case "Del":
+				w.Ctl("delete")
+			case "Reload":
+				err := reloadConf(configFile)
 				if err != nil {
 					log.Print(err)
-					continue
 				}
-//TODO: use another separator as ":" could be present in the chorded text
-				where := dest + ":" + string(e.Text)
-				dispatchSearch(string(e.Loc), where, string(e.Arg))
-			case 'l': // button 3 in tag
-				// let the plumber deal with it
-				w.WriteEvent(e)
-			case 'L': // button 3 in body
-				// let the plumber deal with it
+			default:
 				w.WriteEvent(e)
 			}
+		case 'X': // execute in body
+			dest, err := readDestination(*e)
+			if err != nil {
+				log.Print(err)
+				continue
+			}
+			//TODO: use another separator as ":" could be present in the chorded text
+			where := dest + ":" + string(e.Text)
+			dispatchSearch(string(e.Loc), where, string(e.Arg))
+		case 'l': // button 3 in tag
+			// let the plumber deal with it
+			w.WriteEvent(e)
+		case 'L': // button 3 in body
+			// let the plumber deal with it
+			w.WriteEvent(e)
 		}
-		c <- 1
+	}
+	c <- 1
 }
 
 func usage() {
@@ -364,7 +368,7 @@ func main() {
 	if *help {
 		usage()
 	}
-	
+
 	if flag.NArg() == 0 {
 		usage()
 	}
@@ -376,7 +380,7 @@ func main() {
 	//TODO: window should not start if can't listen
 	go listen(c)
 	go eventLoop(c)
-	<- c
+	<-c
 	w.Ctl("delete")
 	w.CloseFiles()
 	// with an acme ui it's actually not necessary anymore  to have 

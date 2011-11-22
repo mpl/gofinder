@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	globalProj  = ""
-	projects map[string]project
+	globalProj        = ""
+	projects          map[string]project
 	filePathValidator *regexp.Regexp
 )
 
@@ -45,6 +45,7 @@ func listen(c chan int) {
 }
 
 func serve(conn net.Conn) {
+	defer conn.Close()
 	var m msg
 	dec := gob.NewDecoder(conn)
 	err := dec.Decode(&m)
@@ -89,7 +90,7 @@ func serve(conn net.Conn) {
 	case file:
 		if !filePathValidator.MatchString(m.What) {
 			patternTofileName(m.What, *where)
-		}	else {	
+		} else {
 			openFile(m.What, *where, false)
 		}
 	case cppInc:
@@ -98,12 +99,14 @@ func serve(conn net.Conn) {
 		findCppClassMethod(m.What, *where)
 	case cppClassMemb:
 		findCppClassMember(m.What, *where)
-	case fortSub:
-		findFortranSubroutine(m.What, *where)
-	case fortMod:
-		findFortranModule(m.What, *where)
 	case fortFunc:
 		findFortranFunction(m.What, *where)
+	case fortMod:
+		findFortranModule(m.What, *where)
+	case fortSub:
+		findFortranSubroutine(m.What, *where)
+	case fortType:
+		findFortranType(m.What, *where)
 	case goPack:
 		openFile(cleanGoPackageLine(m.What), *where, true)
 	case goFunc:
@@ -121,23 +124,23 @@ func serve(conn net.Conn) {
 func patternTofileName(what string, where []string) {
 	// assume it's a class/package/etc name and try to find what's the most usual guess depending on the language
 	// if no project is set, just go through all of them until there's a match
-	if globalProj ==  "" {
-		for _,v := range projects {
-			for _,s := range v.Exts {
-				ext := strings.Replace(s, "\\", "", -1) 
-				err := openFile(what + ext, v.Locations, false)
+	if globalProj == "" {
+		for _, v := range projects {
+			for _, s := range v.Exts {
+				ext := strings.Replace(s, "\\", "", -1)
+				err := openFile(what+ext, v.Locations, false)
 				if err == nil {
 					return
 				}
-			}				
+			}
 		}
-//TODO: probably remove that case later
+		//TODO: probably remove that case later
 	} else {
 		v, ok := projects[globalProj]
 		if ok {
-			for _,s := range v.Exts {
-				ext := strings.Replace(s, "\\", "", -1) 
-				openFile(what + ext, where, false)
+			for _, s := range v.Exts {
+				ext := strings.Replace(s, "\\", "", -1)
+				openFile(what+ext, where, false)
 			}
 		}
 	}
@@ -147,7 +150,7 @@ func patternTofileName(what string, where []string) {
 //TODO: write to acme win once we replace find and grep with native code
 func findRegex(reg string, list []string, exts []string) {
 	println("regex: " + reg)
-	var err os.Error
+	var err error
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		log.Fatal(err)
@@ -156,7 +159,7 @@ func findRegex(reg string, list []string, exts []string) {
 	args1 := make([]string, 0, nargs+len(list))
 	args1 = append(args1, "/usr/bin/find")
 	args1 = append(args1, list...)
-	exp := ".*("+ strings.Join(exts, "|") + ")$"
+	exp := ".*(" + strings.Join(exts, "|") + ")$"
 	args1 = append(args1, "-regextype", "posix-egrep", "-regex", exp)
 	fds1 := []*os.File{os.Stdin, pw, os.Stderr}
 
@@ -200,7 +203,7 @@ func findFile(relPath string, list []string) string {
 			currentDir, err := os.Open(includeDir)
 			if err != nil {
 				log.Print(err)
-//TODO: do we remove a dir when it's bogus? for now, just ignore it
+				//TODO: do we remove a dir when it's bogus? for now, just ignore it
 				// apparently it's not ENOENT that we hit. investigate.
 				continue
 			}
@@ -244,7 +247,7 @@ func findDir(relPath string, list []string) string {
 			currentDir, err := os.Open(includeDir)
 			if err != nil {
 				log.Print(err)
-//TODO: do we remove a dir when it's bogus? for now, just ignore it
+				//TODO: do we remove a dir when it's bogus? for now, just ignore it
 				// apparently it's not ENOENT that we hit. investigate.
 				continue
 			}
@@ -280,7 +283,7 @@ func findDir(relPath string, list []string) string {
 }
 
 //TODO: restore noplumb option? meh, who uses acme without the plumber anyway?
-func openFile(relPath string, list []string, isDir bool) os.Error {
+func openFile(relPath string, list []string, isDir bool) error {
 	fullPath := ""
 	if isDir {
 		fullPath = findDir(relPath, list)
@@ -303,5 +306,5 @@ func openFile(relPath string, list []string, isDir bool) os.Error {
 		Attr: map[string]string{},
 		Data: []byte(fullPath),
 	})
-	return nil	
+	return nil
 }
