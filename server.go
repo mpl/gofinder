@@ -115,6 +115,8 @@ func serve(conn net.Conn) {
 		findGoMeth(m.What, *where)
 	case goTyp:
 		findGoType(m.What, *where)
+	case pyFunc:
+		findPyFunc(m.What, *where)
 	default:
 		println(m.Action, m.What)
 	}

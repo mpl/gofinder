@@ -35,6 +35,7 @@ const (
 	goFunc
 	goMeth
 	goTyp
+	pyFunc
 )
 
 var (
@@ -220,6 +221,13 @@ func dispatchSearch(from string, where string, what string) {
 	element := whereSplit[2]
 	//TODO: rejoin the rest of where in case some ":" are present
 	switch lang {
+	case python:
+		switch element {
+		case pyFunction:
+			sendCommand(pyFunc, what, proj+":"+lang)
+		case all:
+			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
+		}
 	case golang:
 		switch element {
 		case goFunction:
@@ -354,10 +362,12 @@ func usage() {
 func loadSyntax() {
 	syntaxElements = make(map[string][]string, 1)
 	syntaxElements[golang] = goElements
+	syntaxElements[python] = pyElements
 	syntaxElements[fortran] = fortranElements
 	syntaxElements[cpp] = cppElements
 	allExts = make(map[string][]string, 1)
 	allExts[golang] = goExts
+	allExts[python] = pyExts
 	allExts[fortran] = fortranExts
 	allExts[cpp] = cppExts
 }

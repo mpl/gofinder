@@ -6,6 +6,7 @@ GOFILES=\
 	c++.go		\
 	fortran.go	\
 	go.go				\
+	python.go				\
 	main.go		\
 	server.go
 
