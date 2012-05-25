@@ -13,6 +13,6 @@ var (
 
 func findPyFunc(name string, where []string) {
 	regex := `^` + pyFunction + " +" + name + ` *\(`
-	findRegex(regex, where, pyExts)
+	findRegex(regex, where, pyExts, "")
 }
 

@@ -95,6 +95,7 @@ func printUi() error {
 			w.Write("body", []byte("	"+l))
 		}
 		w.Write("body", []byte("\n"))
+		w.Write("body", []byte("	"+v.Excluded+"\n"))
 	}
 	w.Write("body", []byte("-----------------------------------"))
 	w.Write("body", []byte("\n"))
@@ -140,6 +141,7 @@ type project struct {
 	Languages []string
 	Locations []string
 	Exts      []string
+	Excluded  string
 }
 
 func loadProjects(file string) error {

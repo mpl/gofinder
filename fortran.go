@@ -20,20 +20,20 @@ var (
 func findFortranSubroutine(call string, where []string) {
 	//TODO: match the sig of the subroutine
 	findRegex(`^` + fortranSubroutine + ` +` + strings.TrimSpace(call) + ` *\(.*`,
-		where, fortranExts)
+		where, fortranExts, "")
 }
 
 func findFortranModule(module string, where []string) {
 	findRegex(`^` + fortranModule + ` +` + strings.TrimSpace(module),
-		where, fortranExts)
+		where, fortranExts, "")
 }
 
 func findFortranFunction(call string, where []string) {
 	findRegex(`^` + fortranFunction + ` +` + strings.TrimSpace(call) +
-	` *\(.*`, where, fortranExts)
+	` *\(.*`, where, fortranExts, "")
 }
 
 func findFortranType(call string, where []string) {
 	findRegex(`^ *` + fortranType + ` +` + strings.TrimSpace(call) +
-	` *$`, where, fortranExts)
+	` *$`, where, fortranExts, "")
 }

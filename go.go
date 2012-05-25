@@ -24,16 +24,16 @@ func cleanGoPackageLine(input string) string {
 
 func findGoFunc(name string, where []string) {
 	regex := `^` + goFunction + " +" + name + ` *\(`
-	findRegex(regex, where, goExts)
+	findRegex(regex, where, goExts, "")
 }
 
 //TODO: when target is in name, find the right one. (hard. need from).
 func findGoMeth(name string, where []string) {
 	regex := `^` + goFunction + ` +\(.*\) +` + name + ` *\(`
-	findRegex(regex, where, goExts)
+	findRegex(regex, where, goExts, "")
 }
 
 func findGoType(name string, where []string) {
 	regex := `^` + goType + " +" + name
-	findRegex(regex, where, goExts)
+	findRegex(regex, where, goExts, "")
 }

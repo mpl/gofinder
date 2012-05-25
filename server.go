@@ -86,7 +86,7 @@ func serve(conn net.Conn) {
 
 	switch m.Action {
 	case regex:
-		findRegex(m.What, *where, exts)
+		findRegex(m.What, *where, exts, proj.Excluded)
 	case file:
 		if !filePathValidator.MatchString(m.What) {
 			patternTofileName(m.What, *where)
@@ -150,7 +150,7 @@ func patternTofileName(what string, where []string) {
 
 //TODO: follow symlinks?
 //TODO: write to acme win once we replace find and grep with native code
-func findRegex(reg string, list []string, exts []string) {
+func findRegex(reg string, list []string, exts []string, excl string) {
 	println("regex: " + reg)
 	var err error
 	pr, pw, err := os.Pipe()
@@ -163,6 +163,9 @@ func findRegex(reg string, list []string, exts []string) {
 	args1 = append(args1, list...)
 	exp := ".*(" + strings.Join(exts, "|") + ")$"
 	args1 = append(args1, "-regextype", "posix-egrep", "-regex", exp)
+	if excl != "" {
+		args1 = append(args1, "-a", "!", "-regex", excl)
+	}
 	fds1 := []*os.File{os.Stdin, pw, os.Stderr}
 
 	args2 := []string{"/usr/bin/xargs", "/bin/grep", "-E", "-n", reg}
