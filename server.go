@@ -1,15 +1,15 @@
 package main
 
 import (
-	"gob"
+	"bitbucket.org/fhs/goplumb/plumb"
+	"code.google.com/p/goplan9/plan9"
+	"encoding/gob"
 	"log"
 	"net"
 	"os"
 	"path"
 	"regexp"
 	"strings"
-	"goplan9.googlecode.com/hg/plan9"
-	"bitbucket.org/fhs/goplumb/plumb"
 )
 
 var (
@@ -180,11 +180,11 @@ func findRegex(reg string, list []string, exts []string) {
 	}
 	pr.Close()
 
-	_, err = os.Wait(p1.Pid, os.WSTOPPED)
+	_, err = p1.Wait()
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, err = os.Wait(p2.Pid, os.WSTOPPED)
+	_, err = p2.Wait()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -214,14 +214,14 @@ func findFile(relPath string, list []string) string {
 				log.Fatal(err)
 			}
 			currentDir.Close()
-			var fi *os.FileInfo
+			var fi os.FileInfo
 			for _, name := range names {
 				fullPath = path.Join(includeDir, name)
 				fi, err = os.Lstat(fullPath)
 				if err != nil {
 					log.Fatal(err)
 				}
-				if fi.IsDirectory() {
+				if fi.IsDir() {
 					// recurse
 					temp := findFile(relPath, []string{fullPath})
 					if temp != "" {
@@ -258,7 +258,7 @@ func findDir(relPath string, list []string) string {
 				log.Fatal(err)
 			}
 			currentDir.Close()
-			var fi *os.FileInfo
+			var fi os.FileInfo
 			newdir := ""
 			for _, name := range names {
 				newdir = path.Join(includeDir, name)
@@ -266,7 +266,7 @@ func findDir(relPath string, list []string) string {
 				if err != nil {
 					log.Fatal(err)
 				}
-				if fi.IsDirectory() {
+				if fi.IsDir() {
 					fullPath = path.Join(newdir, relPath)
 					fi, err = os.Lstat(fullPath)
 					if err == nil {
@@ -284,7 +284,6 @@ func findDir(relPath string, list []string) string {
 	return ""
 }
 
-//TODO: restore noplumb option? meh, who uses acme without the plumber anyway?
 func openFile(relPath string, list []string, isDir bool) error {
 	fullPath := ""
 	if isDir {
@@ -293,7 +292,7 @@ func openFile(relPath string, list []string, isDir bool) error {
 		fullPath = findFile(relPath, list)
 	}
 	if fullPath == "" {
-		return os.ENOENT
+		return os.ErrNotExist
 	}
 	port, err := plumb.Open("send", plan9.OWRITE)
 	if err != nil {

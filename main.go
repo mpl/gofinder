@@ -1,18 +1,18 @@
 package main
 
 import (
+	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"gob"
-	"json"
 	"log"
 	"net"
 	"os"
 	"regexp"
 	"strings"
 
-	"goplan9.googlecode.com/hg/plan9/acme"
+	"code.google.com/p/goplan9/plan9/acme"
 )
 
 const (
