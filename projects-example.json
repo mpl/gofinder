@@ -6,5 +6,10 @@
 {"Name":"proj1",
 "Languages":["c++"],
 "Locations":["/home/glenda/foo", "/home/glenda/bar"],
-"Exts":["\\.cpp","\\.h"]}
+"Exts":["\\.cpp","\\.h"]},
+{"Name":"camlistore",
+"Languages":["go"],
+"Locations":["/home/mpl/gocode/src/camlistore.org", "/home/mpl/go", "/home/mpl/gocode/src/github.com/mpl", "/home/mpl/gocode/src/bitbucket.org/mpl", "/home/mpl/git/go"],
+"Exts":["\\.go","\\.js"],
+"Excluded":".*zembed_.*"}
 ]
