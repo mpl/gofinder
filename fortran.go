@@ -5,35 +5,35 @@ import (
 )
 
 const (
-	fortran = "fortran"
-	fortranModule = "module"
+	fortran           = "fortran"
+	fortranModule     = "module"
 	fortranSubroutine = "subroutine"
-	fortranFunction = "function"
-	fortranType = "type"
+	fortranFunction   = "function"
+	fortranType       = "type"
 )
 
 var (
 	fortranElements = []string{fortranFunction, fortranModule, fortranSubroutine, fortranType}
-	fortranExts = []string{`\.f90`}
+	fortranExts     = []string{`\.f90`}
 )
 
 func findFortranSubroutine(call string, where []string) {
 	//TODO: match the sig of the subroutine
-	findRegex(`^` + fortranSubroutine + ` +` + strings.TrimSpace(call) + ` *\(.*`,
-		where, fortranExts, "")
+	findRegex(`^`+fortranSubroutine+` +`+strings.TrimSpace(call)+` *\(.*`,
+		where, fortranExts, nil)
 }
 
 func findFortranModule(module string, where []string) {
-	findRegex(`^` + fortranModule + ` +` + strings.TrimSpace(module),
-		where, fortranExts, "")
+	findRegex(`^`+fortranModule+` +`+strings.TrimSpace(module),
+		where, fortranExts, nil)
 }
 
 func findFortranFunction(call string, where []string) {
-	findRegex(`^` + fortranFunction + ` +` + strings.TrimSpace(call) +
-	` *\(.*`, where, fortranExts, "")
+	findRegex(`^`+fortranFunction+` +`+strings.TrimSpace(call)+
+		` *\(.*`, where, fortranExts, nil)
 }
 
 func findFortranType(call string, where []string) {
-	findRegex(`^ *` + fortranType + ` +` + strings.TrimSpace(call) +
-	` *$`, where, fortranExts, "")
+	findRegex(`^ *`+fortranType+` +`+strings.TrimSpace(call)+
+		` *$`, where, fortranExts, nil)
 }

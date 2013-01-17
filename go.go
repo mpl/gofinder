@@ -5,17 +5,17 @@ import (
 )
 
 const (
-	golang = "go"
-	goType = "type"
+	golang     = "go"
+	goType     = "type"
 	goFunction = "func"
-	goMethod = "method"
-	goPackage = "package"
+	goMethod   = "method"
+	goPackage  = "package"
 )
 
 var (
-//	goPackageValidator = regexp.MustCompile(`^( | 	)?"[a-zA-Z]+(/[a-zA-Z]+)*"`)
+	//	goPackageValidator = regexp.MustCompile(`^( | 	)?"[a-zA-Z]+(/[a-zA-Z]+)*"`)
 	goElements = []string{goPackage, goFunction, goType, goMethod}
-	goExts = []string{`\.go`}
+	goExts     = []string{`\.go`}
 )
 
 func cleanGoPackageLine(input string) string {
@@ -24,16 +24,16 @@ func cleanGoPackageLine(input string) string {
 
 func findGoFunc(name string, where []string) {
 	regex := `^` + goFunction + " +" + name + ` *\(`
-	findRegex(regex, where, goExts, "")
+	findRegex(regex, where, goExts, nil)
 }
 
 //TODO: when target is in name, find the right one. (hard. need from).
 func findGoMeth(name string, where []string) {
 	regex := `^` + goFunction + ` +\(.*\) +` + name + ` *\(`
-	findRegex(regex, where, goExts, "")
+	findRegex(regex, where, goExts, nil)
 }
 
 func findGoType(name string, where []string) {
 	regex := `^` + goType + " +" + name
-	findRegex(regex, where, goExts, "")
+	findRegex(regex, where, goExts, nil)
 }

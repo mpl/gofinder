@@ -95,7 +95,10 @@ func printUi() error {
 			w.Write("body", []byte("	"+l))
 		}
 		w.Write("body", []byte("\n"))
-		w.Write("body", []byte("	"+v.Excluded+"\n"))
+		for _, ex := range v.Excluded {
+			w.Write("body", []byte("	"+ex))
+		}
+		w.Write("body", []byte("\n"))
 	}
 	w.Write("body", []byte("-----------------------------------"))
 	w.Write("body", []byte("\n"))
@@ -141,7 +144,7 @@ type project struct {
 	Languages []string
 	Locations []string
 	Exts      []string
-	Excluded  string
+	Excluded  []string
 }
 
 func loadProjects(file string) error {

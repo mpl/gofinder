@@ -11,8 +11,8 @@ import (
 
 //TODO: redo it all to work with the acme ui
 const (
-	cpp = "c++"
-	cppInclude = "include"
+	cpp            = "c++"
+	cppInclude     = "include"
 	cppClassMethod = "staticMethod"
 	cppClassMember = "staticMember"
 )
@@ -20,7 +20,7 @@ const (
 var (
 	cppElements = []string{cppClassMethod, cppClassMember, cppInclude}
 	// note: keep .h as the last one
-	cppExts = []string{`\.cc`,`\.cpp`,`\.h`}
+	cppExts = []string{`\.cc`, `\.cpp`, `\.h`}
 )
 
 func findCppClassMethod(call string, where []string) {
@@ -32,8 +32,8 @@ func findCppClassMethod(call string, where []string) {
 	method := fields[1][0 : len(fields[1])-1]
 	methodValidator := regexp.MustCompile(className + ".*::" + method)
 	fullPath := ""
-	for _, ext := range cppExts[0:len(cppExts)-1] {
-		fullPath = findFile(className + strings.Replace(ext, `\.`, `.`, 1), where)
+	for _, ext := range cppExts[0 : len(cppExts)-1] {
+		fullPath = findFile(className+strings.Replace(ext, `\.`, `.`, 1), where)
 		if fullPath != "" {
 			break
 		}
@@ -73,9 +73,9 @@ func findCppClassMember(name string, where []string) {
 	//TODO: do not assume what's above
 	fields := strings.Split(name, "::")
 	className := strings.Split(fields[0], "<")[0]
-	member := strings.TrimSpace(fields[1][0 : len(fields[1])])
+	member := strings.TrimSpace(fields[1][0:len(fields[1])])
 	memberValidator := regexp.MustCompile(".* +" + member + " *(;|,)")
-	fullPath := findFile(className + strings.Replace(cppExts[len(cppExts)-1], `\.`, `.`, 1), where)
+	fullPath := findFile(className+strings.Replace(cppExts[len(cppExts)-1], `\.`, `.`, 1), where)
 	if fullPath == "" {
 		log.Printf("cpp class file header not found for %s \n", className)
 		return
@@ -104,5 +104,3 @@ func findCppClassMember(name string, where []string) {
 	f.Close()
 	fmt.Printf("%s:%d \n", fullPath, i)
 }
-
-

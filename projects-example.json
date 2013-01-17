@@ -11,5 +11,5 @@
 "Languages":["go"],
 "Locations":["/home/mpl/gocode/src/camlistore.org", "/home/mpl/go", "/home/mpl/gocode/src/github.com/mpl", "/home/mpl/gocode/src/bitbucket.org/mpl", "/home/mpl/git/go"],
 "Exts":["\\.go","\\.js"],
-"Excluded":".*zembed_.*"}
+"Excluded":[".*zembed_.*", ".*tmp/closure.*"]}
 ]

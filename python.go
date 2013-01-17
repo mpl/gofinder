@@ -1,18 +1,17 @@
 package main
 
 const (
-	python = "python"
+	python     = "python"
 	pyFunction = "def"
-	pyModule = "module"
+	pyModule   = "module"
 )
 
 var (
 	pyElements = []string{pyFunction, pyModule}
-	pyExts = []string{`\.py`}
+	pyExts     = []string{`\.py`}
 )
 
 func findPyFunc(name string, where []string) {
 	regex := `^` + pyFunction + " +" + name + ` *\(`
-	findRegex(regex, where, pyExts, "")
+	findRegex(regex, where, pyExts, nil)
 }
-
