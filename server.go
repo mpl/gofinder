@@ -84,6 +84,7 @@ func serve(conn net.Conn) {
 		}
 	}
 
+	// TODO: this big switch is terrible. make a map instead.
 	switch m.Action {
 	case regex:
 		findRegex(m.What, *where, exts, proj.Excluded)
@@ -110,11 +111,11 @@ func serve(conn net.Conn) {
 	case goPack:
 		openFile(cleanGoPackageLine(m.What), *where, true)
 	case goFunc:
-		findGoFunc(m.What, *where)
+		findGoFunc(m.What, *where, proj.Excluded)
 	case goMeth:
-		findGoMeth(m.What, *where)
+		findGoMeth(m.What, *where, proj.Excluded)
 	case goTyp:
-		findGoType(m.What, *where)
+		findGoType(m.What, *where, proj.Excluded)
 	case pyFunc:
 		findPyFunc(m.What, *where)
 	default:

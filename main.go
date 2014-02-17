@@ -132,7 +132,11 @@ func sendCommand(code int, what string, where string) {
 		log.Fatal(err)
 	}
 	enc := gob.NewEncoder(c)
-	err = enc.Encode(msg{code, what, where})
+	err = enc.Encode(msg{
+		Action: code,
+		What:   what,
+		Where:  where,
+	})
 	if err != nil {
 		log.Fatal("encode error:", err)
 	}
@@ -225,6 +229,7 @@ func dispatchSearch(from string, where string, what string) {
 	}
 	element := whereSplit[2]
 	//TODO: rejoin the rest of where in case some ":" are present
+	// TODO: this big switch is terrible. make a map instead.
 	switch lang {
 	case python:
 		switch element {
@@ -398,9 +403,9 @@ func main() {
 	<-c
 	w.Ctl("delete")
 	w.CloseFiles()
-	// with an acme ui it's actually not necessary anymore  to have 
+	// with an acme ui it's actually not necessary anymore  to have
 	// a listening server, however I'm keeping it that way because:
-	// 1) it's probably not big of a slowdown to send the requests to a server 
+	// 1) it's probably not big of a slowdown to send the requests to a server
 	// wrt to the searches themselves
 	// 2) it makes for a nice example of using gobs
 
