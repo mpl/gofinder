@@ -40,7 +40,6 @@ func listen(c chan int) {
 		}
 		go serve(conn)
 		log.Printf("********")
-		log.Printf("Accepted")
 	}
 }
 
@@ -121,6 +120,7 @@ func serve(conn net.Conn) {
 	default:
 		println(m.Action, m.What)
 	}
+	log.Printf("********")
 }
 
 //TODO: factorize
