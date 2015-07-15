@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bitbucket.org/fhs/goplumb/plumb"
-	"code.google.com/p/goplan9/plan9"
 	"encoding/gob"
 	"log"
 	"net"
@@ -10,6 +8,9 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"9fans.net/go/plan9"
+	"9fans.net/go/plumb"
 )
 
 var (
@@ -121,6 +122,7 @@ func serve(conn net.Conn) {
 		println(m.Action, m.What)
 	}
 	log.Printf("********")
+	w.Write("body", []byte(m.What+"\n"))
 }
 
 //TODO: factorize
@@ -305,13 +307,12 @@ func openFile(relPath string, list []string, isDir bool) error {
 		log.Fatal(err)
 	}
 	defer port.Close()
-	port.Send(&plumb.Msg{
+	msg := &plumb.Message{
 		Src:  "gofinder",
 		Dst:  "edit",
-		WDir: "/",
-		Kind: "text",
-		Attr: map[string]string{},
+		Dir:  "/",
+		Type: "text",
 		Data: []byte(fullPath),
-	})
-	return nil
+	}
+	return msg.Send(port)
 }
