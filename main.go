@@ -105,6 +105,7 @@ func printUi() error {
 	w.Write("body", []byte("\n"))
 	w.Write("body", []byte("\n"))
 	w.Write("body", []byte("History: \n"))
+	w.Write("body", []byte("-----------------------------------\n"))
 	// silly trick: select all the things to know the addr of eof
 	err = w.Addr("%s", ",")
 	if err != nil {
