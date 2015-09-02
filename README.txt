@@ -1,3 +1,8 @@
+gofinder
+========
+
+The gofinder program is an acme user interface to look for include files, specific patterns, and regexps.
+
 You need a json config file to define the projects where gofind will look; see projects-example.json for the expected fields.
 
 The resulting acme ui will look like the following.

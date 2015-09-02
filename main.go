@@ -1,3 +1,7 @@
+// 2011 - Mathieu Lonjaret
+
+// The gofinder program is an acme user interface to look for include files,
+// specific patterns, and regexps.
 package main
 
 import (
