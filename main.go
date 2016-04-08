@@ -15,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"9fans.net/go/acme"
 )
@@ -56,6 +57,11 @@ var (
 	allExts        map[string][]string
 	projectWord    = regexp.MustCompile(`^[a-zA-Z]+:`)
 	resZone        string
+
+	// Actually guards the whole of findRegex. I wanted to use it as well to
+	// make killFind atomic, but don't think that's whe way to do it.
+	findProcMu sync.Mutex
+	findProc   *os.Process // So we can kill it when bogus, super long, searches.
 )
 
 func initWindow() {
@@ -66,7 +72,7 @@ func initWindow() {
 	}
 	title := "gofind-" + configFile
 	w.Name(title)
-	tag := "Reload"
+	tag := "Reload Kill"
 	w.Write("tag", []byte(tag))
 	err = reloadConf(configFile)
 	if err != nil {
@@ -128,6 +134,14 @@ func reloadConf(configFile string) error {
 	err = printUi()
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func killFind() error {
+	if findProc != nil {
+		// TODO(mpl): the check+kill isn't atomic, which could be a problem?
+		return findProc.Kill()
 	}
 	return nil
 }
@@ -343,6 +357,11 @@ func eventLoop(c chan int) {
 				w.Ctl("delete")
 			case "Reload":
 				err := reloadConf(configFile)
+				if err != nil {
+					log.Print(err)
+				}
+			case "Kill":
+				err := killFind()
 				if err != nil {
 					log.Print(err)
 				}

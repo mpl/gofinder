@@ -154,6 +154,8 @@ func patternTofileName(what string, where []string) {
 //TODO: follow symlinks?
 //TODO: write to acme win once we replace find and grep with native code
 func findRegex(reg string, list []string, exts []string, excl []string) {
+	findProcMu.Lock()
+	defer findProcMu.Unlock()
 	println("regex: " + reg)
 	var err error
 	pr, pw, err := os.Pipe()
@@ -176,6 +178,7 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 	args2 := []string{"/usr/bin/xargs", "/bin/grep", "-E", "-n", reg}
 	fds2 := []*os.File{pr, os.Stdout, os.Stderr}
 
+	// TODO(mpl): I don't even understand anymore this pw.Close pr.Close sequence. clarify/fix.
 	p1, err := os.StartProcess(args1[0], args1, &os.ProcAttr{Dir: "/", Files: fds1})
 	if err != nil {
 		log.Fatal(err)
@@ -186,6 +189,7 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	findProc = p2
 	pr.Close()
 
 	_, err = p1.Wait()
