@@ -184,13 +184,21 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 		log.Fatal(err)
 	}
 	pw.Close()
+	// If killing p1, getting "process already finished" error
 
 	p2, err := os.StartProcess(args2[0], args2, &os.ProcAttr{Dir: "/", Files: fds2})
 	if err != nil {
 		log.Fatal(err)
 	}
-	findProc = p2
 	pr.Close()
+	// killing p2 does not seem to have any effect
+	// and yet "pkill grep" works.
+	// But maybe it's because we're killing xargs instead of killing grep?
+	// Confirmed:
+	// mpl      14922 14208  0 12:16 ?        00:00:00 /usr/bin/xargs /bin/grep -E -n ab
+	// mpl      14923 14922  4 12:16 ?        00:00:00 /bin/grep -E -n ab /home/mpl/src/caml..
+	findProc = p2
+	// TODO(mpl): maybe make it die after a timer instead of Kill command?
 
 	_, err = p1.Wait()
 	if err != nil {

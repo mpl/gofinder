@@ -140,7 +140,11 @@ func reloadConf(configFile string) error {
 
 func killFind() error {
 	if findProc != nil {
+		log.Printf("Killing process %v", findProc)
 		// TODO(mpl): the check+kill isn't atomic, which could be a problem?
+		if err := findProc.Release(); err != nil {
+			return err
+		}
 		return findProc.Kill()
 	}
 	return nil
