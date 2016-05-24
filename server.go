@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/gob"
+	//	"io"
 	"log"
 	"net"
 	"os"
@@ -162,52 +163,58 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	nargs := 5
-	args1 := make([]string, 0, nargs+len(list))
-	args1 = append(args1, "/usr/bin/find")
-	args1 = append(args1, list...)
-	exp := ".*(" + strings.Join(exts, "|") + ")$"
-	args1 = append(args1, "-regextype", "posix-egrep", "-regex", exp)
-	if excl != nil {
-		for _, v := range excl {
-			args1 = append(args1, "-a", "!", "-regex", v)
+	/*
+		pr, pw := io.Pipe()
+	*/
+	go func() {
+		nargs := 5
+		args1 := make([]string, 0, nargs+len(list))
+		args1 = append(args1, "/usr/bin/find")
+		args1 = append(args1, list...)
+		exp := ".*(" + strings.Join(exts, "|") + ")$"
+		args1 = append(args1, "-regextype", "posix-egrep", "-regex", exp)
+		if excl != nil {
+			for _, v := range excl {
+				args1 = append(args1, "-a", "!", "-regex", v)
+			}
 		}
-	}
-	fds1 := []*os.File{os.Stdin, pw, os.Stderr}
+		fds1 := []*os.File{os.Stdin, pw, os.Stderr}
+		p1, err := os.StartProcess(args1[0], args1, &os.ProcAttr{Dir: "/", Files: fds1})
+		if err != nil {
+			log.Fatalf("Couldn't start 'find': %v", err)
+		}
+		_, err = p1.Wait()
+		if err != nil {
+			log.Fatalf("Error with 'find': %v", err)
+		}
+		pw.Close()
+	}()
 
 	args2 := []string{"/usr/bin/xargs", "/bin/grep", "-E", "-n", reg}
 	fds2 := []*os.File{pr, os.Stdout, os.Stderr}
 
-	// TODO(mpl): I don't even understand anymore this pw.Close pr.Close sequence. clarify/fix.
-	p1, err := os.StartProcess(args1[0], args1, &os.ProcAttr{Dir: "/", Files: fds1})
-	if err != nil {
-		log.Fatal(err)
-	}
-	pw.Close()
-	// If killing p1, getting "process already finished" error
-
 	p2, err := os.StartProcess(args2[0], args2, &os.ProcAttr{Dir: "/", Files: fds2})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Couldn't start 'grep': %v", err)
 	}
-	pr.Close()
+	// If killing p1, getting "process already finished" error
 	// killing p2 does not seem to have any effect
 	// and yet "pkill grep" works.
 	// But maybe it's because we're killing xargs instead of killing grep?
 	// Confirmed:
 	// mpl      14922 14208  0 12:16 ?        00:00:00 /usr/bin/xargs /bin/grep -E -n ab
 	// mpl      14923 14922  4 12:16 ?        00:00:00 /bin/grep -E -n ab /home/mpl/src/caml..
-	findProc = p2
-	// TODO(mpl): maybe make it die after a timer instead of Kill command?
+	//	findProc = p2
+	// TODO(mpl): so maybe we remove xargs and buffer the arguments ourselves?
+	// Yes: afaiu xargs just buffers the args and calls the commmand every N args, so I could do it
+	// myself.
 
-	_, err = p1.Wait()
-	if err != nil {
-		log.Fatal(err)
-	}
 	_, err = p2.Wait()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error with 'grep': %v", err)
 	}
+	pr.Close()
+
 }
 
 func findFile(relPath string, list []string) string {
