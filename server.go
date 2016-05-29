@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"encoding/gob"
+	"fmt"
 	//	"io"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 
 	"9fans.net/go/plan9"
 	"9fans.net/go/plumb"
@@ -152,6 +156,8 @@ func patternTofileName(what string, where []string) {
 	}
 }
 
+const exitStatusOne = "exit status 1"
+
 //TODO: follow symlinks?
 //TODO: write to acme win once we replace find and grep with native code
 func findRegex(reg string, list []string, exts []string, excl []string) {
@@ -159,13 +165,13 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 	defer findProcMu.Unlock()
 	println("regex: " + reg)
 	var err error
+	//		pr, pw := io.Pipe()
 	pr, pw, err := os.Pipe()
 	if err != nil {
 		log.Fatal(err)
 	}
-	/*
-		pr, pw := io.Pipe()
-	*/
+	defer pr.Close()
+
 	go func() {
 		nargs := 5
 		args1 := make([]string, 0, nargs+len(list))
@@ -178,6 +184,7 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 				args1 = append(args1, "-a", "!", "-regex", v)
 			}
 		}
+		// TODO(mpl): use an exec.Cmd, and specify Stdout as the pipe?
 		fds1 := []*os.File{os.Stdin, pw, os.Stderr}
 		p1, err := os.StartProcess(args1[0], args1, &os.ProcAttr{Dir: "/", Files: fds1})
 		if err != nil {
@@ -190,31 +197,52 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 		pw.Close()
 	}()
 
-	args2 := []string{"/usr/bin/xargs", "/bin/grep", "-E", "-n", reg}
-	fds2 := []*os.File{pr, os.Stdout, os.Stderr}
-
-	p2, err := os.StartProcess(args2[0], args2, &os.ProcAttr{Dir: "/", Files: fds2})
-	if err != nil {
-		log.Fatalf("Couldn't start 'grep': %v", err)
+	sc := bufio.NewScanner(pr)
+	var lines []string
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for sc.Scan() {
+		lines = append(lines, sc.Text())
+		if len(lines) > 9 {
+			args2 := append([]string{"/bin/grep", "-E", "-n", reg}, lines...)
+			lines = lines[:0]
+			mu.Lock()
+			go func() {
+				defer mu.Unlock()
+				wg.Add(1)
+				defer wg.Done()
+				cmd := exec.Command(args2[0], args2[1:]...)
+				out, err := cmd.Output()
+				if err != nil {
+					// Because exit status 1 is grep simply didn't find anything.
+					if !strings.Contains(err.Error(), exitStatusOne) {
+						log.Fatalf("grep failed: %v, %s", err, string(err.(*exec.ExitError).Stderr))
+					}
+					return
+				}
+				fmt.Fprintf(os.Stdout, "%s", string(out))
+			}()
+		}
 	}
-	// If killing p1, getting "process already finished" error
-	// killing p2 does not seem to have any effect
-	// and yet "pkill grep" works.
-	// But maybe it's because we're killing xargs instead of killing grep?
-	// Confirmed:
-	// mpl      14922 14208  0 12:16 ?        00:00:00 /usr/bin/xargs /bin/grep -E -n ab
-	// mpl      14923 14922  4 12:16 ?        00:00:00 /bin/grep -E -n ab /home/mpl/src/caml..
-	//	findProc = p2
-	// TODO(mpl): so maybe we remove xargs and buffer the arguments ourselves?
-	// Yes: afaiu xargs just buffers the args and calls the commmand every N args, so I could do it
-	// myself.
-
-	_, err = p2.Wait()
-	if err != nil {
-		log.Fatalf("Error with 'grep': %v", err)
+	wg.Wait()
+	if err := sc.Err(); err != nil {
+		log.Fatal(err)
 	}
-	pr.Close()
+	if len(lines) <= 0 {
+		return
+	}
 
+	args2 := append([]string{"/bin/grep", "-E", "-n", reg}, lines...)
+	cmd := exec.Command(args2[0], args2[1:]...)
+	out, err := cmd.Output()
+	if err != nil {
+		// Because exit status 1 is grep simply didn't find anything.
+		if !strings.Contains(err.Error(), exitStatusOne) {
+			log.Fatalf("grep failed: %v, %s", err, string(err.(*exec.ExitError).Stderr))
+		}
+		return
+	}
+	fmt.Fprintf(os.Stdout, "%s", string(out))
 }
 
 func findFile(relPath string, list []string) string {
