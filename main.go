@@ -61,7 +61,9 @@ var (
 	// Actually guards the whole of findRegex. I wanted to use it as well to
 	// make killFind atomic, but don't think that's whe way to do it.
 	findProcMu sync.Mutex
-	findProc   *os.Process // So we can kill it when bogus, super long, searches.
+
+	killGrepMu sync.Mutex
+	killGrep   bool
 )
 
 func initWindow() {
@@ -134,18 +136,6 @@ func reloadConf(configFile string) error {
 	err = printUi()
 	if err != nil {
 		return err
-	}
-	return nil
-}
-
-func killFind() error {
-	if findProc != nil {
-		log.Printf("Killing process %v", findProc)
-		// TODO(mpl): the check+kill isn't atomic, which could be a problem?
-		if err := findProc.Release(); err != nil {
-			return err
-		}
-		return findProc.Kill()
 	}
 	return nil
 }
@@ -365,10 +355,9 @@ func eventLoop(c chan int) {
 					log.Print(err)
 				}
 			case "Kill":
-				err := killFind()
-				if err != nil {
-					log.Print(err)
-				}
+				killGrepMu.Lock()
+				killGrep = true
+				killGrepMu.Unlock()
 			default:
 				w.WriteEvent(e)
 			}

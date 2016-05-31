@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -193,6 +194,19 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for sc.Scan() {
+		killGrepMu.Lock()
+		if killGrep {
+			// TODO(mpl): kill last grep? it's only running over 10 files at max, so kindof ok to let it finish.
+			lines = nil
+			// Consume all of pr to let find finish gracefully
+			if _, err := io.Copy(ioutil.Discard, pr); err != nil {
+				log.Fatal(err)
+			}
+			killGrep = false
+			killGrepMu.Unlock()
+			break
+		}
+		killGrepMu.Unlock()
 		lines = append(lines, sc.Text())
 		if len(lines) > 9 {
 			args2 := append([]string{"/bin/grep", "-E", "-n", reg}, lines...)
@@ -223,6 +237,7 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 		return
 	}
 
+	// TODO(mpl): refactor as func
 	args2 := append([]string{"/bin/grep", "-E", "-n", reg}, lines...)
 	cmd := exec.Command(args2[0], args2[1:]...)
 	out, err := cmd.Output()
