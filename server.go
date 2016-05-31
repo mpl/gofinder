@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"encoding/gob"
 	"fmt"
-	//	"io"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -165,11 +165,7 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 	defer findProcMu.Unlock()
 	println("regex: " + reg)
 	var err error
-	//		pr, pw := io.Pipe()
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		log.Fatal(err)
-	}
+	pr, pw := io.Pipe()
 	defer pr.Close()
 
 	go func() {
@@ -184,15 +180,10 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 				args1 = append(args1, "-a", "!", "-regex", v)
 			}
 		}
-		// TODO(mpl): use an exec.Cmd, and specify Stdout as the pipe?
-		fds1 := []*os.File{os.Stdin, pw, os.Stderr}
-		p1, err := os.StartProcess(args1[0], args1, &os.ProcAttr{Dir: "/", Files: fds1})
-		if err != nil {
-			log.Fatalf("Couldn't start 'find': %v", err)
-		}
-		_, err = p1.Wait()
-		if err != nil {
-			log.Fatalf("Error with 'find': %v", err)
+		cmd := exec.Command(args1[0], args1[1:]...)
+		cmd.Stdout = pw
+		if err := cmd.Run(); err != nil {
+			log.Fatalf("find failed: %v, %s", err, string(err.(*exec.ExitError).Stderr))
 		}
 		pw.Close()
 	}()
