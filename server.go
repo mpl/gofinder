@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"encoding/gob"
 	"fmt"
 	"io"
@@ -31,6 +32,10 @@ type msg struct {
 	Where  string
 }
 
+type response struct {
+	body string // JSON string
+}
+
 func listen(c chan int) {
 	ln, err := net.Listen("tcp", ":"+*port)
 	if err != nil {
@@ -50,6 +55,10 @@ func listen(c chan int) {
 	}
 }
 
+func serveProjects(conn net.Conn) error {
+	return json.NewEncoder(conn).Encode(projects)
+}
+
 func serve(conn net.Conn) {
 	defer conn.Close()
 	var m msg
@@ -62,6 +71,12 @@ func serve(conn net.Conn) {
 	var proj project
 	var exts []string
 	var ok bool
+	if m.Action == doGetProjects {
+		if err := serveProjects(conn); err != nil {
+			log.Print(err)
+		}
+		return
+	}
 	if !strings.Contains(m.Where, ":") {
 		log.Printf("incomplete m.Where message: %s \n", m.Where)
 		return

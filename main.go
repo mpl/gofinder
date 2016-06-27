@@ -41,10 +41,19 @@ const (
 	goMeth
 	goTyp
 	pyFunc
+	doGetProjects
 )
 
 var (
 	port = flag.String("p", "2020", "listening port")
+	// TODO(mpl): handle other langs. or at least say we don't support them.
+	// TODO(mpl): make it clear with usage which flags are for CLI use.
+	flagProject = flag.String("project", "", "Name of the project to search in. Defaults to the first one found in the config otherwise.")
+	flagWhere = flag.Int("where", 0, "Where to search for in the project. Defaults to first location found in the project otherwise.")
+	flagFunc = flag.String("func", "", "The function to search for.")
+	flagMethod = flag.String("method", "", "The method to search for.")
+	flagPkg = flag.String("pkg", "", "The package to search for.")
+	flagType = flag.String("type", "", "The type to search for.")
 	help = flag.Bool("h", false, "show this help")
 )
 
@@ -154,7 +163,14 @@ func sendCommand(code int, what string, where string) {
 	if err != nil {
 		log.Fatal("encode error:", err)
 	}
-	c.Close()
+	defer c.Close()
+	if code != doGetProjects {
+		return
+	}
+	
+	if err := json.NewDecoder(c).Decode(&projects); err != nil {
+		log.Fatalf("decode error: %v", err)
+	}
 }
 
 type project struct {
@@ -263,6 +279,7 @@ func dispatchSearch(from string, where string, what string) {
 		case goType:
 			sendCommand(goTyp, what, proj+":"+lang)
 		case all:
+			println("WHERE = " + proj+":"+lang)
 			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
 		}
 	case fortran:
@@ -290,10 +307,12 @@ func dispatchSearch(from string, where string, what string) {
 			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
 		}
 	case all:
+		println("WHERE = " + proj+":"+all)
 		sendCommand(regex, what, proj+":"+all)
 	default:
 		// it's a path/location
 		loc := lang
+		println("WHERE = " + proj+":"+loc+":"+element)
 		sendCommand(regex, escapeSpecials(what), proj+":"+loc+":"+element)
 	}
 }
@@ -400,15 +419,41 @@ func loadSyntax() {
 	allExts[cpp] = cppExts
 }
 
+func anyCmdFlag() bool {
+	return *flagPkg != "" ||
+		*flagFunc != "" ||
+		*flagType != "" ||
+		*flagMethod != ""
+}
+
 func main() {
 	flag.Usage = usage
 	flag.Parse()
 	if *help {
 		usage()
 	}
+	args := flag.Args()
 
-	if flag.NArg() == 0 {
+	if flag.NArg() == 0 && !anyCmdFlag() {
+		// TODO(mpl): update usage
 		usage()
+	}
+
+	cmdMode := anyCmdFlag()
+	if !cmdMode {
+	if _, err := os.Stat(args[0]); err != nil {
+		if !os.IsNotExist(err) {
+			log.Fatal(err)
+		}
+		// 1st arg is not a config file, hence assume we want to send a command
+		cmdMode = true
+	}
+	}
+
+	if cmdMode {
+		getProjects()
+		sendCmd(args)
+		return
 	}
 
 	configFile = flag.Args()[0]
@@ -428,3 +473,71 @@ func main() {
 	// 2) it makes for a nice example of using gobs
 
 }
+
+func getProjects() {
+	sendCommand(doGetProjects, "", "")
+}
+
+func sendCmd(args []string) {
+		// TODO(mpl): make sure there's already an instance running in acme? assume for now.
+	if len(projects) == 0 {
+		println("no projects")
+		return
+	}
+	proj := *flagProject
+	var theProj project
+	for k,v := range projects {
+		if proj == "" {
+			proj = k
+			theProj = v
+		}
+		if proj == k {
+			theProj = v
+			break
+		}
+	}
+
+	// TODO(mpl): check theProj valid at this point.
+
+	theLoc := ""
+	for i, l := range theProj.Locations {
+		if i == *flagWhere {
+			theLoc = l
+		}
+	}
+
+	// where == proj:lang
+	// lang == all|location|reallang
+
+	// TODO(mpl): other langs? meh.
+	code := regex
+	var flagArg string
+	switch {
+	case *flagFunc != "":
+		code = goFunc
+		flagArg = *flagFunc
+	case *flagMethod != "":
+		code = goMeth
+		flagArg = *flagMethod
+	case *flagPkg != "":
+		code = goPack
+		flagArg = *flagPkg
+	case *flagType != "":
+		code = goTyp
+		flagArg = *flagType
+	}
+	if code == regex {
+		// TODO(mpl): probably wrong in some cases.
+		what := escapeSpecials(strings.Join(args, " "))
+		if theLoc == "" {
+			sendCommand(code, what, proj+":go")
+			return
+		}
+		sendCommand(code, what, proj+":loc:"+theLoc)
+		return
+	}
+	sendCommand(code, flagArg, proj+":"+"go")
+}
+
+// click on "all": WHERE = camlistore:go
+// click on "/home/mpl/src/camlistore.org": WHERE = camlistore:loc:/home/mpl/src/camlistore.org
