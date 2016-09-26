@@ -1,15 +1,7 @@
 [
-{"Name":"proj2",
-"Languages":["fortran","go"],
-"Locations":["/home/glenda/foobar", "/home/glenda/foobarbaz", "/home/glenda/go"],
-"Exts":["\\.f90","\\.go"]},
-{"Name":"proj1",
-"Languages":["c++"],
-"Locations":["/home/glenda/foo", "/home/glenda/bar"],
-"Exts":["\\.cpp","\\.h"]},
 {"Name":"camlistore",
-"Languages":["go"],
-"Locations":["/home/mpl/gocode/src/camlistore.org", "/home/mpl/go", "/home/mpl/gocode/src/github.com/mpl", "/home/mpl/gocode/src/bitbucket.org/mpl", "/home/mpl/git/go"],
+"GuruScope": ["camlistore.org/server/camlistored"],
+"Locations":["/home/mpl/src/camlistore.org", "/home/mpl/src/camlistore.org/vendor", "/home/mpl/src/go4.org", "/home/mpl/src/github.com/mpl"],
 "Exts":["\\.go","\\.js"],
-"Excluded":[".*zembed_.*", ".*tmp/closure.*"]}
+"Excluded":[".*zembed_.*", ".*third_party/closure.*", ".*tmp/closure.*", ".*third_party/react.*", ".*clients/chrome/clip-it-good.*", ".*tmp/build-gopath.*", ".*gopherjs.js", ".*publisher.js"]}
 ]

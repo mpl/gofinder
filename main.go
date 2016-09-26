@@ -1,10 +1,53 @@
-// 2011 - Mathieu Lonjaret
+// Copyright 2011 Mathieu Lonjaret
 
-// The gofinder program is an acme user interface to look for include files,
-// specific patterns, and regexps.
+// The gofinder program is an acme user interface to search through Go projects.
+// It uses 2-1 chording (see https://swtch.com/plan9port/man/man1/acme.html).
+// It uses a JSON configuration file to define project(s) to search on; see
+// projects-example.json for a working configuration example.
+//
+// It displays, in the following order: The name of the project, to perform a
+// global search. The Go Guru (golang.org/x/tools/cmd/guru) modes, to perform a
+// guru search. The project's locations, to perform a local search. For example,
+// with the provided projects-example.json, the UI will look like:
+//
+//	Search in:
+//	-----------------------------------
+//	camlistore:
+//		callees	callers	callstack	definition	describe	freevars	implements	peers	pointsto	referrers	what	whicherrs
+//		/home/mpl/src/camlistore.org	/home/mpl/src/camlistore.org/vendor	/home/mpl/src/go4.org	/home/mpl/src/github.com/mpl
+//	-----------------------------------
+//
+//
+// The configuration file is mapped to a project type, which is defined as follows:
+//
+//	type Project struct {
+//		// Name is the one word name describing the project, that will appear at
+//		// the top of the UI. One word, because chording on the name starts a
+//		// global search in the project. Global search means a find on all the
+//		// files ending with the extensions defined in Exts, looking in the
+//		// locations defined in Locations, excluding all the patterns defined in
+//		// Excluded. The results are piped to a grep for the argument that is sent
+//		// with the chord.
+//		Name      string
+//		// Locations defines all the locations relevant to the project, and as
+//		// such, they are displayed on the UI. A global search runs find through
+//		// all of them. A chording on one of the locations will perform a local
+//		// search, i.e. in the same way as a global search, except find will only
+//		// run through that one location.
+//		Locations []string
+//		// Exts defines the file extension patterns (regexp), that find will
+//		// take into account. It defaults to []string{"\.go"} otherwise.
+//		Exts      []string
+//		// Excluded defines the patterns (regexp), that find will take into
+//		// account to exclude from the search results.
+//		Excluded  []string
+//		// GuruScope is the scope that guru will use for the modes that need one.
+//		GuruScope []string
+//	}
 package main
 
 import (
+	"bytes"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
@@ -13,7 +56,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -21,9 +66,8 @@ import (
 )
 
 const (
-	all      = "all"
-	NBUF     = 512
-	location = "loc"
+	guruKeyword     = "guru"
+	locationKeyword = "location"
 )
 
 const (
@@ -46,26 +90,22 @@ const (
 
 var (
 	port = flag.String("p", "2020", "listening port")
-	// TODO(mpl): handle other langs. or at least say we don't support them.
-	// TODO(mpl): make it clear with usage which flags are for CLI use.
-	flagProject = flag.String("project", "", "Name of the project to search in. Defaults to the first one found in the config otherwise.")
-	flagWhere = flag.Int("where", 0, "Where to search for in the project. Defaults to first location found in the project otherwise.")
-	flagFunc = flag.String("func", "", "The function to search for.")
-	flagMethod = flag.String("method", "", "The method to search for.")
-	flagPkg = flag.String("pkg", "", "The package to search for.")
-	flagType = flag.String("type", "", "The type to search for.")
 	help = flag.Bool("h", false, "show this help")
+	// CLI mode flags. disabled for now, until feature is finished.
+	// flagProject = flag.String("project", "", "Name of the project to search in. Defaults to the first one found in the config otherwise.")
+	// flagWhere = flag.Int("where", 0, "Where to search for in the project. Defaults to first location found in the project otherwise.")
+	// flagFunc = flag.String("func", "", "The function to search for.")
+	// flagMethod = flag.String("method", "", "The method to search for.")
+	// flagPkg = flag.String("pkg", "", "The package to search for.")
+	// flagType = flag.String("type", "", "The type to search for.")
 )
 
 var (
-	w              *acme.Win
-	PLAN9          = os.Getenv("PLAN9")
-	configFile     string
-	lineBuf        []byte
-	syntaxElements map[string][]string
-	allExts        map[string][]string
-	projectWord    = regexp.MustCompile(`^[a-zA-Z]+:`)
-	resZone        string
+	w           *acme.Win
+	PLAN9       = os.Getenv("PLAN9")
+	configFile  string
+	projectWord = regexp.MustCompile(`^[a-zA-Z]+:`)
+	resZone     string
 
 	// Actually guards the whole of findRegex. I wanted to use it as well to
 	// make killFind atomic, but don't think that's whe way to do it.
@@ -73,6 +113,22 @@ var (
 
 	killGrepMu sync.Mutex
 	killGrep   bool
+
+	// maps guru mode to whether it needs a scope
+	guruModes = map[string]bool{
+		"callees":    true,
+		"callers":    true,
+		"callstack":  true,
+		"definition": false,
+		"describe":   false,
+		"freevars":   false,
+		"implements": false,
+		"peers":      true,
+		"pointsto":   true,
+		"referrers":  false,
+		"what":       false,
+		"whicherrs":  false,
+	}
 )
 
 func initWindow() {
@@ -89,7 +145,6 @@ func initWindow() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	lineBuf = make([]byte, NBUF)
 }
 
 func printUi() error {
@@ -104,20 +159,17 @@ func printUi() error {
 	for _, v := range projects {
 		w.Write("body", []byte(v.Name+":"))
 		w.Write("body", []byte("\n"))
-		for _, l := range v.Languages {
-			w.Write("body", []byte("	"+l+":"))
-			for _, el := range syntaxElements[l] {
-				w.Write("body", []byte("	"+el))
-			}
-			w.Write("body", []byte("	"+all))
-			w.Write("body", []byte("\n"))
+		var guruSorted []string
+		for mode, _ := range guruModes {
+			guruSorted = append(guruSorted, mode)
 		}
-		for _, l := range v.Locations {
-			w.Write("body", []byte("	"+l))
+		sort.Strings(guruSorted)
+		for _, mode := range guruSorted {
+			w.Write("body", []byte("	"+mode))
 		}
 		w.Write("body", []byte("\n"))
-		for _, ex := range v.Excluded {
-			w.Write("body", []byte("	"+ex))
+		for _, l := range v.Locations {
+			w.Write("body", []byte("	"+l))
 		}
 		w.Write("body", []byte("\n"))
 	}
@@ -149,16 +201,17 @@ func reloadConf(configFile string) error {
 	return nil
 }
 
-func sendCommand(code int, what string, where string) {
+func sendCommand(code int, q *query) {
 	c, err := net.Dial("tcp", "localhost:"+*port)
 	if err != nil {
 		log.Fatal(err)
 	}
 	enc := gob.NewEncoder(c)
 	err = enc.Encode(msg{
-		Action: code,
-		What:   what,
-		Where:  where,
+		Action:  code,
+		Project: q.project,
+		What:    q.what,
+		Where:   q.where,
 	})
 	if err != nil {
 		log.Fatal("encode error:", err)
@@ -167,22 +220,39 @@ func sendCommand(code int, what string, where string) {
 	if code != doGetProjects {
 		return
 	}
-	
+
 	if err := json.NewDecoder(c).Decode(&projects); err != nil {
 		log.Fatalf("decode error: %v", err)
 	}
 }
 
-type project struct {
-	Name      string
-	Languages []string
+type Project struct {
+	// Name is the one word name describing the project, that will appear at
+	// the top of the UI. One word, because chording on the name starts a
+	// global search in the project. Global search means a find on all the
+	// files ending with the extensions defined in Exts, looking in the
+	// locations defined in Locations, excluding all the patterns defined in
+	// Excluded. The results are piped to a grep for the argument that is sent
+	// with the chord.
+	Name string
+	// Locations defines all the locations relevant to the project, and as
+	// such, they are displayed on the UI. A global search runs find through
+	// all of them. A chording on one of the locations will perform a local
+	// search, i.e. in the same way as a global search, except find will only
+	// run through that one location.
 	Locations []string
-	Exts      []string
-	Excluded  []string
+	// Exts defines the file extension patterns (regexp), that find will
+	// take into account. It defaults to []string{"\.go"} otherwise.
+	Exts []string
+	// Excluded defines the patterns (regexp), that find will take into
+	// account to exclude from the search results.
+	Excluded []string
+	// GuruScope is the scope that guru will use for the modes that need one.
+	GuruScope []string
 }
 
 func loadProjects(file string) error {
-	var loaded []project
+	var loaded []Project
 	r, err := os.Open(file)
 	if err != nil {
 		return err
@@ -193,7 +263,7 @@ func loadProjects(file string) error {
 	if err != nil {
 		return err
 	}
-	projects = make(map[string]project, 1)
+	projects = make(map[string]Project, 1)
 	for _, v := range loaded {
 		projects[v.Name] = v
 	}
@@ -210,13 +280,11 @@ func escapeSpecials(s string) string {
 	return escaped
 }
 
-func dispatchSearch(from string, where string, what string) {
-	//println(from)
-	//println(where)
-	//println(what)
-	whereSplit := strings.Split(where, ":")
-	proj := whereSplit[0]
-	lang := whereSplit[1]
+func dispatchSearch(q *query) {
+	proj := q.project
+	kind := q.kind
+	where := q.where
+	what := q.what
 	v, ok := projects[proj]
 	if !ok {
 		log.Printf("%s not a valid project (not a key) \n", proj)
@@ -226,118 +294,83 @@ func dispatchSearch(from string, where string, what string) {
 	if what == "" {
 		return
 	}
-	found := false
-	switch lang {
-	case all:
-		// search everywhere in the project
-		found = true
-	case location:
+
+	if kind == guruKeyword {
+		// TODO(mpl): move the guru call to the "server"? Not really a win,
+		// but just out of consistency.
+		if err := guru(q.mode, q.where, q.project); err != nil {
+			log.Printf("go guru error: %v", err)
+		}
+		return
+	}
+
+	if kind != locationKeyword {
+		log.Printf("unknown kind of search: %v", q.kind)
+		return
+	}
+	if where != "" {
+		found := false
 		// search only in a specific location (path)
-		loc := whereSplit[2]
 		for _, l := range v.Locations {
-			if l == loc {
+			if l == where {
 				found = true
 				break
 			}
 		}
 		if found == false {
-			log.Printf("%s is not a location of %s project\n", loc, proj)
-			return
-		}
-	default:
-		// search only in one specific language (using the files extensions)
-		for _, l := range v.Languages {
-			if l == lang {
-				found = true
-				break
-			}
-		}
-		if found == false {
-			log.Printf("%s is not a language of %s project\n", lang, proj)
+			log.Printf("%s is not a location of %s project\n", where, proj)
 			return
 		}
 	}
-	element := whereSplit[2]
-	//TODO: rejoin the rest of where in case some ":" are present
-	// TODO: this big switch is terrible. make a map instead.
-	switch lang {
-	case python:
-		switch element {
-		case pyFunction:
-			sendCommand(pyFunc, what, proj+":"+lang)
-		case all:
-			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
-		}
-	case golang:
-		switch element {
-		case goFunction:
-			sendCommand(goFunc, what, proj+":"+lang)
-		case goMethod:
-			sendCommand(goMeth, what, proj+":"+lang)
-		case goPackage:
-			sendCommand(goPack, what, proj+":"+lang)
-		case goType:
-			sendCommand(goTyp, what, proj+":"+lang)
-		case all:
-			println("WHERE = " + proj+":"+lang)
-			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
-		}
-	case fortran:
-		switch element {
-		case fortranFunction:
-			sendCommand(fortFunc, what, proj+":"+lang)
-		case fortranModule:
-			sendCommand(fortMod, what, proj+":"+lang)
-		case fortranType:
-			sendCommand(fortType, what, proj+":"+lang)
-		case fortranSubroutine:
-			sendCommand(fortSub, what, proj+":"+lang)
-		case all:
-			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
-		}
-	case cpp:
-		switch element {
-		case cppInclude:
-			sendCommand(cppInc, what, proj+":"+lang)
-		case cppClassMethod:
-			sendCommand(cppClassMeth, what, proj+":"+lang)
-		case cppClassMember:
-			sendCommand(cppClassMemb, what, proj+":"+lang)
-		case all:
-			sendCommand(regex, escapeSpecials(what), proj+":"+lang)
-		}
-	case all:
-		println("WHERE = " + proj+":"+all)
-		sendCommand(regex, what, proj+":"+all)
-	default:
-		// it's a path/location
-		loc := lang
-		println("WHERE = " + proj+":"+loc+":"+element)
-		sendCommand(regex, escapeSpecials(what), proj+":"+loc+":"+element)
-	}
+	q.what = escapeSpecials(what)
+	sendCommand(regex, q)
 }
 
-func readDestination(e acme.Event) (string, error) {
+type query struct {
+	project string
+	kind    string // "location" for location search, or "guru", or "everywhere".
+	mode    string // the guru mode if kind is "guru".
+	where   string
+	what    string
+}
+
+func buildQuery(e acme.Event) (*query, error) {
+	const NBUF = 512
+	line := make([]byte, NBUF)
 	// read current line
 	addr := "#" + fmt.Sprint(e.OrigQ0) + "+--"
 	err := w.Addr("%s", addr)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	_, err = w.Read("xdata", lineBuf)
+	n, err := w.Read("xdata", line)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if lineBuf[0] != '	' {
-		proj := strings.Split(string(lineBuf), ":")[0]
+	if n == NBUF {
+		// TODO(mpl): do something better about this
+		return nil, errors.New("xdata is too long to be read in one call.")
+	}
+	if line[0] != '	' {
+		proj := strings.Split(string(line), ":")[0]
 		if !projectWord.MatchString(proj + ":") {
-			return "", errors.New("wrong clic")
+			return nil, errors.New("wrong clic")
 		}
-		return proj + ":" + all, nil
+		return &query{
+			project: proj,
+			kind:    locationKeyword,
+		}, nil
 	}
-	language := location
-	if strings.Contains(string(lineBuf), ":") {
-		language = strings.TrimSpace(strings.Split(string(lineBuf), ":")[0])
+
+	target := string(e.Text)
+	q := new(query)
+	if _, ok := guruModes[target]; ok {
+		q.kind = guruKeyword
+		q.mode = target
+		q.where = string(e.Loc)
+	} else {
+		q.kind = locationKeyword
+		q.where = target
 	}
 	elevator := ""
 	for {
@@ -346,19 +379,20 @@ func readDestination(e acme.Event) (string, error) {
 		addr = "#" + fmt.Sprint(e.OrigQ0) + elevator + "+"
 		err := w.Addr("%s", addr)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		_, err = w.Read("xdata", lineBuf)
+		_, err = w.Read("xdata", line)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		if lineBuf[0] != '	' {
+		if line[0] != '	' {
 			// found the project line
-			proj := strings.Split(string(lineBuf), ":")[0]
-			return proj + ":" + language, nil
+			proj := strings.Split(string(line), ":")[0]
+			q.project = proj
+			return q, nil
 		}
 	}
-	return "", nil
+	return nil, errors.New("invalid search kind")
 }
 
 func eventLoop(c chan int) {
@@ -381,14 +415,13 @@ func eventLoop(c chan int) {
 				w.WriteEvent(e)
 			}
 		case 'X': // execute in body
-			dest, err := readDestination(*e)
+			q, err := buildQuery(*e)
 			if err != nil {
 				log.Print(err)
 				continue
 			}
-			//TODO: use another separator as ":" could be present in the chorded text
-			where := dest + ":" + string(e.Text)
-			dispatchSearch(string(e.Loc), where, string(e.Arg))
+			q.what = string(e.Arg)
+			dispatchSearch(q)
 		case 'l': // button 3 in tag
 			// let the plumber deal with it
 			w.WriteEvent(e)
@@ -400,30 +433,79 @@ func eventLoop(c chan int) {
 	c <- 1
 }
 
+func guru(mode, loc, scope string) error {
+	args := []string{mode, loc}
+	if needsScope, _ := guruModes[mode]; needsScope {
+		args = []string{"-scope", strings.Join(projects[scope].GuruScope, ","), mode, loc}
+	}
+	cmd := exec.Command("guru", args...)
+	var stderr, stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%v; %v; %v", err, string(stderr.Bytes()), string(stdout.Bytes()))
+	}
+	fmt.Fprint(os.Stdout, "********\n")
+	fmt.Fprintf(os.Stdout, "%s", string(stdout.Bytes()))
+	fmt.Fprint(os.Stdout, "********\n")
+	w.Write("body", []byte("guru "+strings.Join(args, " ")+"\n"))
+	return nil
+}
+
+// TODO(mpl): use go generate to write that doc as the program doc too?
+
+var docTxt = `
+The gofinder program is an acme user interface to search through Go projects.
+It uses 2-1 chording (see https://swtch.com/plan9port/man/man1/acme.html).
+It uses a JSON configuration file to define project(s) to search on; see
+projects-example.json for a working configuration example.
+
+It displays, in the following order: The name of the project, to perform a
+global search. The Go Guru (golang.org/x/tools/cmd/guru) modes, to perform a
+guru search. The project's locations, to perform a local search. For example,
+with the provided projects-example.json, the UI will look like:
+
+	Search in: 
+	-----------------------------------
+	camlistore:
+		callees	callers	callstack	definition	describe	freevars	implements	peers	pointsto	referrers	what	whicherrs
+		/home/mpl/src/camlistore.org	/home/mpl/src/camlistore.org/vendor	/home/mpl/src/go4.org	/home/mpl/src/github.com/mpl
+	-----------------------------------
+
+
+The configuration file is mapped to a project type, which is defined as follows:
+
+	type Project struct {
+		// Name is the one word name describing the project, that will appear at
+		// the top of the UI. One word, because chording on the name starts a
+		// global search in the project. Global search means a find on all the
+		// files ending with the extensions defined in Exts, looking in the
+		// locations defined in Locations, excluding all the patterns defined in
+		// Excluded. The results are piped to a grep for the argument that is sent
+		// with the chord.
+		Name      string
+		// Locations defines all the locations relevant to the project, and as
+		// such, they are displayed on the UI. A global search runs find through
+		// all of them. A chording on one of the locations will perform a local
+		// search, i.e. in the same way as a global search, except find will only
+		// run through that one location.
+		Locations []string
+		// Exts defines the file extension patterns (regexp), that find will
+		// take into account. It defaults to []string{"\.go"} otherwise.
+		Exts      []string
+		// Excluded defines the patterns (regexp), that find will take into
+		// account to exclude from the search results.
+		Excluded  []string
+		// GuruScope is the scope that guru will use for the modes that need one.
+		GuruScope []string
+	}
+`
+
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: gofind projects.json \n")
 	flag.PrintDefaults()
+	fmt.Fprintf(os.Stderr, docTxt)
 	os.Exit(2)
-}
-
-func loadSyntax() {
-	syntaxElements = make(map[string][]string, 1)
-	syntaxElements[golang] = goElements
-	syntaxElements[python] = pyElements
-	syntaxElements[fortran] = fortranElements
-	syntaxElements[cpp] = cppElements
-	allExts = make(map[string][]string, 1)
-	allExts[golang] = goExts
-	allExts[python] = pyExts
-	allExts[fortran] = fortranExts
-	allExts[cpp] = cppExts
-}
-
-func anyCmdFlag() bool {
-	return *flagPkg != "" ||
-		*flagFunc != "" ||
-		*flagType != "" ||
-		*flagMethod != ""
 }
 
 func main() {
@@ -434,30 +516,13 @@ func main() {
 	}
 	args := flag.Args()
 
-	if flag.NArg() == 0 && !anyCmdFlag() {
-		// TODO(mpl): update usage
+	if flag.NArg() != 1 {
 		usage()
 	}
 
-	cmdMode := anyCmdFlag()
-	if !cmdMode {
-	if _, err := os.Stat(args[0]); err != nil {
-		if !os.IsNotExist(err) {
-			log.Fatal(err)
-		}
-		// 1st arg is not a config file, hence assume we want to send a command
-		cmdMode = true
-	}
-	}
+	// TODO(mpl): restore CLI mode when ready.
 
-	if cmdMode {
-		getProjects()
-		sendCmd(args)
-		return
-	}
-
-	configFile = flag.Args()[0]
-	loadSyntax()
+	configFile = args[0]
 	initWindow()
 	c := make(chan int)
 	//TODO: window should not start if can't listen
@@ -473,71 +538,3 @@ func main() {
 	// 2) it makes for a nice example of using gobs
 
 }
-
-func getProjects() {
-	sendCommand(doGetProjects, "", "")
-}
-
-func sendCmd(args []string) {
-		// TODO(mpl): make sure there's already an instance running in acme? assume for now.
-	if len(projects) == 0 {
-		println("no projects")
-		return
-	}
-	proj := *flagProject
-	var theProj project
-	for k,v := range projects {
-		if proj == "" {
-			proj = k
-			theProj = v
-		}
-		if proj == k {
-			theProj = v
-			break
-		}
-	}
-
-	// TODO(mpl): check theProj valid at this point.
-
-	theLoc := ""
-	for i, l := range theProj.Locations {
-		if i == *flagWhere {
-			theLoc = l
-		}
-	}
-
-	// where == proj:lang
-	// lang == all|location|reallang
-
-	// TODO(mpl): other langs? meh.
-	code := regex
-	var flagArg string
-	switch {
-	case *flagFunc != "":
-		code = goFunc
-		flagArg = *flagFunc
-	case *flagMethod != "":
-		code = goMeth
-		flagArg = *flagMethod
-	case *flagPkg != "":
-		code = goPack
-		flagArg = *flagPkg
-	case *flagType != "":
-		code = goTyp
-		flagArg = *flagType
-	}
-	if code == regex {
-		// TODO(mpl): probably wrong in some cases.
-		what := escapeSpecials(strings.Join(args, " "))
-		if theLoc == "" {
-			sendCommand(code, what, proj+":go")
-			return
-		}
-		sendCommand(code, what, proj+":loc:"+theLoc)
-		return
-	}
-	sendCommand(code, flagArg, proj+":"+"go")
-}
-
-// click on "all": WHERE = camlistore:go
-// click on "/home/mpl/src/camlistore.org": WHERE = camlistore:loc:/home/mpl/src/camlistore.org

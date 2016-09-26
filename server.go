@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -22,14 +22,15 @@ import (
 
 var (
 	globalProj        = ""
-	projects          map[string]project
+	projects          map[string]Project
 	filePathValidator *regexp.Regexp
 )
 
 type msg struct {
-	Action int
-	What   string
-	Where  string
+	Action  int
+	Project string
+	What    string
+	Where   string
 }
 
 type response struct {
@@ -67,45 +68,29 @@ func serve(conn net.Conn) {
 	if err != nil {
 		log.Fatal("decode error:", err)
 	}
-	var where *[]string
-	var proj project
-	var exts []string
-	var ok bool
 	if m.Action == doGetProjects {
 		if err := serveProjects(conn); err != nil {
 			log.Print(err)
 		}
 		return
 	}
-	if !strings.Contains(m.Where, ":") {
-		log.Printf("incomplete m.Where message: %s \n", m.Where)
-		return
-	}
-	whereSplit := strings.Split(m.Where, ":")
-	proj, ok = projects[whereSplit[0]]
+	proj, ok := projects[m.Project]
 	if !ok {
-		log.Print("not a project name: %s \n", whereSplit[0])
+		log.Print("not a project name: %s \n", m.Project)
 		return
 	}
-	sub := whereSplit[1]
-	switch sub {
-	case all:
+	var where *[]string
+	if m.Where != "" {
+		where = &[]string{m.Where}
+	} else {
 		where = &(proj.Locations)
-		exts = proj.Exts
-	case location:
-		where = &[]string{whereSplit[2]}
-		exts = proj.Exts
-	default:
-		// it's a lang -> search everywhere but only with exts of the lang
-		where = &(proj.Locations)
-		exts, ok = allExts[sub]
-		if !ok {
-			log.Printf("%s not a key in allExts\n", sub)
-			return
-		}
+	}
+	exts := proj.Exts
+	if len(exts) == 0 {
+		exts = []string{`\.go`}
 	}
 
-	// TODO: this big switch is terrible. make a map instead.
+	// TODO(mpl): restore whatever case file was?
 	switch m.Action {
 	case regex:
 		findRegex(m.What, *where, exts, proj.Excluded)
@@ -115,30 +100,6 @@ func serve(conn net.Conn) {
 		} else {
 			openFile(m.What, *where, false)
 		}
-	case cppInc:
-		openFile(m.What, *where, false)
-	case cppClassMeth:
-		findCppClassMethod(m.What, *where)
-	case cppClassMemb:
-		findCppClassMember(m.What, *where)
-	case fortFunc:
-		findFortranFunction(m.What, *where)
-	case fortMod:
-		findFortranModule(m.What, *where)
-	case fortSub:
-		findFortranSubroutine(m.What, *where)
-	case fortType:
-		findFortranType(m.What, *where)
-	case goPack:
-		openFile(cleanGoPackageLine(m.What), *where, true)
-	case goFunc:
-		findGoFunc(m.What, *where, proj.Excluded)
-	case goMeth:
-		findGoMeth(m.What, *where, proj.Excluded)
-	case goTyp:
-		findGoType(m.What, *where, proj.Excluded)
-	case pyFunc:
-		findPyFunc(m.What, *where)
 	default:
 		println(m.Action, m.What)
 	}
@@ -146,7 +107,6 @@ func serve(conn net.Conn) {
 	w.Write("body", []byte(m.What+"\n"))
 }
 
-//TODO: factorize
 func patternTofileName(what string, where []string) {
 	// assume it's a class/package/etc name and try to find what's the most usual guess depending on the language
 	// if no project is set, just go through all of them until there's a match
@@ -174,12 +134,11 @@ func patternTofileName(what string, where []string) {
 
 const exitStatusOne = "exit status 1"
 
-//TODO: follow symlinks?
-//TODO: write to acme win once we replace find and grep with native code
+// TODO(mpl): follow symlinks?
+// TODO(mpl): write to acme win once we replace find and grep with native code
 func findRegex(reg string, list []string, exts []string, excl []string) {
 	findProcMu.Lock()
 	defer findProcMu.Unlock()
-	println("regex: " + reg)
 	var err error
 	pr, pw := io.Pipe()
 	defer pr.Close()
