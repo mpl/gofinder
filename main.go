@@ -443,7 +443,7 @@ func guru(mode, loc, scope string) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%v; %v; %v", err, string(stderr.Bytes()), string(stdout.Bytes()))
+		return fmt.Errorf("%v; %v; %v; %v", err, strings.Join(args, " "), string(stderr.Bytes()), string(stdout.Bytes()))
 	}
 	fmt.Fprint(os.Stdout, "********\n")
 	fmt.Fprintf(os.Stdout, "%s", string(stdout.Bytes()))
