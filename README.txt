@@ -7,6 +7,7 @@ It uses 2-1 chording (see https://swtch.com/plan9port/man/man1/acme.html).
 It uses a JSON configuration file to define project(s) to search on; see
 projects-example.json for a working configuration example.
 
+
 It displays, in the following order: The name of the project, to perform a
 global search. The Go Guru (golang.org/x/tools/cmd/guru) modes, to perform a
 guru search. The project's locations, to perform a local search. For example,
@@ -18,6 +19,16 @@ with the provided projects-example.json, the UI will look like:
 		callees	callers	callstack	definition	describe	freevars	implements	peers	pointsto	referrers	what	whicherrs
 		/home/mpl/src/camlistore.org	/home/mpl/src/camlistore.org/vendor	/home/mpl/src/go4.org	/home/mpl/src/github.com/mpl
 	-----------------------------------
+
+
+A brief recap on acme mouse chording: first place the text cursor on the word
+you want the search to apply to, with a left click at any position on the word.
+Then send that word as an argument to one of the guru commands with 2-1
+chording. That means, press and hold the middle click on the command (for example, the
+"definition" word), and while still holding it, press the left click.
+
+
+The output of commands is printed to the +Errors window.
 
 
 The configuration file is mapped to a project type, which is defined as follows:

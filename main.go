@@ -18,6 +18,16 @@
 //	-----------------------------------
 //
 //
+// A brief recap on acme mouse chording: first place the text cursor on the word
+// you want the search to apply to, with a left click at any position on the word.
+// Then send that word as an argument to one of the guru commands with 2-1
+// chording. That means, press and hold the middle click on the command (for example, the
+// "definition" word), and while still holding it, press the left click.
+//
+//
+// The output of commands is printed to the +Errors window.
+//
+//
 // The configuration file is mapped to a project type, which is defined as follows:
 //
 //	type Project struct {
@@ -471,6 +481,16 @@ with the provided projects-example.json, the UI will look like:
 		callees	callers	callstack	definition	describe	freevars	implements	peers	pointsto	referrers	what	whicherrs
 		/home/mpl/src/camlistore.org	/home/mpl/src/camlistore.org/vendor	/home/mpl/src/go4.org	/home/mpl/src/github.com/mpl
 	-----------------------------------
+
+
+A brief recap on acme mouse chording: first place the text cursor on the word
+you want the search to apply to, with a left click at any position on the word.
+Then send that word as an argument to one of the guru commands with 2-1
+chording. That means, press and hold the middle click on the command (for example, the
+"definition" word), and while still holding it, press the left click.
+
+
+The output of commands is printed to the +Errors window.
 
 
 The configuration file is mapped to a project type, which is defined as follows:
