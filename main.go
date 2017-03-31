@@ -175,7 +175,15 @@ func printUi() error {
 		}
 		sort.Strings(guruSorted)
 		for _, mode := range guruSorted {
-			w.Write("body", []byte("	"+mode))
+			if scoped := guruModes[mode]; !scoped {
+				w.Write("body", []byte("	"+mode))
+			}
+		}
+		w.Write("body", []byte("\n"))
+		for _, mode := range guruSorted {
+			if scoped := guruModes[mode]; scoped {
+				w.Write("body", []byte("	"+mode))
+			}
 		}
 		w.Write("body", []byte("\n"))
 		for _, l := range v.Locations {
