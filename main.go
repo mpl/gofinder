@@ -63,10 +63,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -108,6 +110,7 @@ var (
 	// flagMethod = flag.String("method", "", "The method to search for.")
 	// flagPkg = flag.String("pkg", "", "The package to search for.")
 	// flagType = flag.String("type", "", "The type to search for.")
+	flagThere = flag.String("there", "", "generate basic config file for repo at the given location, and use it.")
 )
 
 var (
@@ -264,7 +267,7 @@ type Project struct {
 	Exts []string
 	// Excluded defines the patterns (regexp), that find will take into
 	// account to exclude from the search results.
-	Excluded []string
+	Excluded []string `json:"excluded,omitempty"`
 	// GuruScope is the scope that guru will use for the modes that need one.
 	GuruScope []string
 }
@@ -529,6 +532,44 @@ The configuration file is mapped to a project type, which is defined as follows:
 	}
 `
 
+func genConfig(there string) (string, error) {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		return "", errors.New("No GOPATH defined")
+	}
+	absThere, err := filepath.Abs(there)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(absThere, gopath) {
+		return "", fmt.Errorf("project %q not in GOPATH %v", absThere, gopath)
+	}
+	location := absThere
+	name := filepath.Base(location)
+	// TODO(mpl): maybe add all dirs in location to be guruScopes? or something
+	// smarter than the current state anyway.
+	guruScope := filepath.Join(strings.TrimPrefix(location, filepath.Join(gopath, "src")+string(filepath.Separator)), "TOBEREPLACED")
+	project := Project{
+		Name:      name,
+		Locations: []string{location},
+		Exts:      []string{`\.go`, `\.js`},
+		GuruScope: []string{guruScope},
+	}
+	projects := []Project{project}
+	configFile := filepath.Join(location, "gofind.json")
+	if _, err := os.Stat(configFile); err == nil {
+		return "", fmt.Errorf("refusing to overwrite existing config file at %v", configFile)
+	}
+	data, err := json.MarshalIndent(projects, "", "	")
+	if err != nil {
+		return "", err
+	}
+	if err := ioutil.WriteFile(configFile, data, 0600); err != nil {
+		return "", err
+	}
+	return configFile, nil
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: gofind projects.json \n")
 	flag.PrintDefaults()
@@ -544,13 +585,26 @@ func main() {
 	}
 	args := flag.Args()
 
-	if flag.NArg() != 1 {
+	if *flagThere != "" && flag.NArg() == 1 {
+		fmt.Fprintf(os.Stderr, "config file argument and -there flag are mutually exclusive")
 		usage()
 	}
 
-	// TODO(mpl): restore CLI mode when ready.
+	if *flagThere == "" && flag.NArg() != 1 {
+		usage()
+	}
 
-	configFile = args[0]
+	if *flagThere != "" {
+		var err error
+		configFile, err = genConfig(*flagThere)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		configFile = args[0]
+	}
+
+	// TODO(mpl): restore CLI mode when ready.
 	initWindow()
 	c := make(chan int)
 	//TODO: window should not start if can't listen

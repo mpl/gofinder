@@ -181,6 +181,7 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 			break
 		}
 		killGrepMu.Unlock()
+//		println("LINE: ", sc.Text())
 		lines = append(lines, sc.Text())
 		if len(lines) > 9 {
 			args2 := append([]string{"/bin/grep", "-E", "-n", reg}, lines...)
