@@ -134,6 +134,8 @@ func patternTofileName(what string, where []string) {
 
 const exitStatusOne = "exit status 1"
 
+// TODO(mpl): things like "map[string]string" fail, probably need to escape the
+// brackets.
 // TODO(mpl): follow symlinks?
 // TODO(mpl): write to acme win once we replace find and grep with native code
 func findRegex(reg string, list []string, exts []string, excl []string) {
@@ -146,7 +148,7 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 	go func() {
 		nargs := 5
 		args1 := make([]string, 0, nargs+len(list))
-		args1 = append(args1, "/usr/bin/find")
+		args1 = append(args1, findBin)
 		args1 = append(args1, list...)
 		exp := ".*(" + strings.Join(exts, "|") + ")$"
 		args1 = append(args1, "-regextype", "posix-egrep", "-regex", exp)
@@ -181,10 +183,10 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 			break
 		}
 		killGrepMu.Unlock()
-//		println("LINE: ", sc.Text())
+		//		println("LINE: ", sc.Text())
 		lines = append(lines, sc.Text())
 		if len(lines) > 9 {
-			args2 := append([]string{"/bin/grep", "-E", "-n", reg}, lines...)
+			args2 := append([]string{grepBin, "-E", "-n", reg}, lines...)
 			lines = lines[:0]
 			mu.Lock()
 			go func() {
@@ -196,7 +198,12 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 				if err != nil {
 					// Because exit status 1 is grep simply didn't find anything.
 					if !strings.Contains(err.Error(), exitStatusOne) {
-						log.Fatalf("grep failed: %v, %s", err, string(err.(*exec.ExitError).Stderr))
+						// TODO(mpl): be less lazy about that *exec.Error assertion
+						exitErr, ok := err.(*exec.ExitError)
+						if !ok {
+							log.Fatalf("grep call failed (and i was too lazy to record Stderr): %v", err)
+						}
+						log.Fatalf("grep failed: %v, %s", err, string(exitErr.Stderr))
 					}
 					return
 				}
@@ -213,7 +220,7 @@ func findRegex(reg string, list []string, exts []string, excl []string) {
 	}
 
 	// TODO(mpl): refactor as func
-	args2 := append([]string{"/bin/grep", "-E", "-n", reg}, lines...)
+	args2 := append([]string{grepBin, "-E", "-n", reg}, lines...)
 	cmd := exec.Command(args2[0], args2[1:]...)
 	out, err := cmd.Output()
 	if err != nil {

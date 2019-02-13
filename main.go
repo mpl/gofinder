@@ -4,6 +4,7 @@
 // It uses 2-1 chording (see https://swtch.com/plan9port/man/man1/acme.html).
 // It uses a JSON configuration file to define project(s) to search on; see
 // projects-example.json for a working configuration example.
+// It also relies on GNU (not bsd!) grep and find.
 //
 // It displays, in the following order: The name of the project, to perform a
 // global search. The Go Guru (golang.org/x/tools/cmd/guru) modes, to perform a
@@ -70,6 +71,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -127,6 +129,9 @@ var (
 	killGrepMu sync.Mutex
 	killGrep   bool
 
+	findBin = "find"
+	grepBin = "grep"
+
 	// maps guru mode to whether it needs a scope
 	guruModes = map[string]bool{
 		"callees":    true,
@@ -151,6 +156,17 @@ func initWindow() {
 		log.Fatal(err)
 	}
 	title := "gofind-" + configFile
+	if err := checkGNU(); err != nil {
+		gnuERR := err
+		w.Name("ERROR")
+		err := w.Addr("%s", "#0,")
+		if err != nil {
+			log.Fatal(err)
+		}
+		w.Write("body", []byte(gnuERR.Error()))
+		w.Write("body", []byte("\n"))
+		return
+	}
 	w.Name(title)
 	tag := "Reload Kill"
 	w.Write("tag", []byte(tag))
@@ -158,6 +174,38 @@ func initWindow() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func checkGNU() error {
+	out, err := exec.Command("find", "--version").CombinedOutput()
+	if err != nil {
+		if runtime.GOOS != "darwin" {
+			return fmt.Errorf("%s, %v", out, err)
+		}
+		out, err = exec.Command("gfind", "--version").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%s, %v", out, err)
+		}
+		findBin = "gfind"
+	}
+	if !strings.Contains(string(out), "GNU") {
+		return fmt.Errorf("GNU find required")
+	}
+	out, err = exec.Command("grep", "--version").CombinedOutput()
+	if err != nil {
+		if runtime.GOOS != "darwin" {
+			return fmt.Errorf("%s, %v", out, err)
+		}
+		out, err = exec.Command("ggrep", "--version").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%s, %v", out, err)
+		}
+		grepBin = "ggrep"
+	}
+	if !strings.Contains(string(out), "GNU") {
+		return fmt.Errorf("GNU grep required")
+	}
+	return nil
 }
 
 func printUi() error {
@@ -359,7 +407,14 @@ func buildQuery(e acme.Event) (*query, error) {
 	const NBUF = 512
 	line := make([]byte, NBUF)
 	// read current line
-	addr := "#" + fmt.Sprint(e.OrigQ0) + "+--"
+	// TODO(mpl): why the eff is this different on acme linux and acme macos?
+	var addr string
+	if runtime.GOOS == "darwin" {
+		addr = "#" + fmt.Sprint(e.OrigQ0) + "+-"
+	} else {
+		// assuming for now that the darwin case is the weird one, but I have no 		// idea really.
+		addr = "#" + fmt.Sprint(e.OrigQ0) + "+--"
+	}
 	err := w.Addr("%s", addr)
 	if err != nil {
 		return nil, err
@@ -375,7 +430,7 @@ func buildQuery(e acme.Event) (*query, error) {
 	if line[0] != '	' {
 		proj := strings.Split(string(line), ":")[0]
 		if !projectWord.MatchString(proj + ":") {
-			return nil, errors.New("wrong clic")
+			return nil, errors.New("wrong click")
 		}
 		return &query{
 			project: proj,
@@ -480,6 +535,7 @@ The gofinder program is an acme user interface to search through Go projects.
 It uses 2-1 chording (see https://swtch.com/plan9port/man/man1/acme.html).
 It uses a JSON configuration file to define project(s) to search on; see
 projects-example.json for a working configuration example.
+It also relies on GNU (not bsd!) grep and find.
 
 It displays, in the following order: The name of the project, to perform a
 global search. The Go Guru (golang.org/x/tools/cmd/guru) modes, to perform a
