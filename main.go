@@ -80,8 +80,9 @@ import (
 )
 
 const (
-	guruKeyword     = "guru"
-	locationKeyword = "location"
+	guruKeyword        = "guru"
+	sourcegraphKeyWord = "sourcegraph"
+	locationKeyword    = "location"
 )
 
 const (
@@ -147,6 +148,9 @@ var (
 		"what":       false,
 		"whicherrs":  false,
 	}
+
+	// the repo - ours - we use in Sourcegraph queries
+	sourcegraphRepo string
 )
 
 func initWindow() {
@@ -237,6 +241,9 @@ func printUi() error {
 			}
 		}
 		w.Write("body", []byte("\n"))
+		if sourcegraphRepo != "" {
+			w.Write("body", []byte("	"+sourcegraphKeyWord+"\n"))
+		}
 		for _, l := range v.Locations {
 			w.Write("body", []byte("	"+l))
 		}
@@ -373,6 +380,13 @@ func dispatchSearch(q *query) {
 		return
 	}
 
+	if kind == sourcegraphKeyWord {
+		if err := sourcegraph(q.what); err != nil {
+			log.Printf("sourcegraph error: %v", err)
+		}
+		return
+	}
+
 	if kind != locationKeyword {
 		log.Printf("unknown kind of search: %v", q.kind)
 		return
@@ -442,6 +456,10 @@ func buildQuery(e acme.Event) (*query, error) {
 	q := new(query)
 	if _, ok := guruModes[target]; ok {
 		q.kind = guruKeyword
+		q.mode = target
+		q.where = string(e.Loc)
+	} else if target == sourcegraphKeyWord {
+		q.kind = sourcegraphKeyWord
 		q.mode = target
 		q.where = string(e.Loc)
 	} else {
@@ -528,6 +546,35 @@ func guru(mode, loc, scope string) error {
 	return nil
 }
 
+func sourcegraph(what string) error {
+	if what == "" {
+		return nil
+	}
+	if sourcegraphRepo == "" {
+		println("NO SOURCEGRAPH REPO")
+		return nil
+	}
+	// TODO(mpl): use the plumber instead?
+	repo := regexp.QuoteMeta(sourcegraphRepo)
+	srcgrphURL := `https://sourcegraph.com/search?q=repo:^` + repo + `$ ` + what
+	openCmd := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		openCmd = "open"
+	}
+	cmd := exec.Command(openCmd, srcgrphURL)
+	var stderr, stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("sourcegraph error; %v; %v; %v", err, string(stderr.Bytes()), string(stdout.Bytes()))
+	}
+	fmt.Fprint(os.Stdout, "********\n")
+	fmt.Fprintf(os.Stdout, "opened in browser")
+	fmt.Fprintf(os.Stdout, "%s", string(stdout.Bytes()))
+	fmt.Fprint(os.Stdout, "********\n")
+	return nil
+}
+
 // TODO(mpl): use go generate to write that doc as the program doc too?
 
 var docTxt = `
@@ -588,6 +635,22 @@ The configuration file is mapped to a project type, which is defined as follows:
 	}
 `
 
+func guessRepo(configFile string) (string, error) {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		return "", errors.New("No GOPATH defined")
+	}
+	absFilepath, err := filepath.Abs(configFile)
+	if err != nil {
+		return "", err
+	}
+	location := filepath.Dir(absFilepath)
+	if !strings.HasPrefix(location, gopath) {
+		return "", fmt.Errorf("project %q not in GOPATH %v", location, gopath)
+	}
+	return strings.TrimPrefix(location, filepath.Join(gopath, "src")+string(filepath.Separator)), nil
+}
+
 func genConfig(there string) (string, error) {
 	gopath := os.Getenv("GOPATH")
 	if gopath == "" {
@@ -604,7 +667,8 @@ func genConfig(there string) (string, error) {
 	name := filepath.Base(location)
 	// TODO(mpl): maybe add all dirs in location to be guruScopes? or something
 	// smarter than the current state anyway.
-	guruScope := filepath.Join(strings.TrimPrefix(location, filepath.Join(gopath, "src")+string(filepath.Separator)), "TOBEREPLACED")
+	sourcegraphRepo = strings.TrimPrefix(location, filepath.Join(gopath, "src")+string(filepath.Separator))
+	guruScope := filepath.Join(sourcegraphRepo, "TOBEREPLACED")
 	project := Project{
 		Name:      name,
 		Locations: []string{location},
@@ -658,6 +722,12 @@ func main() {
 		}
 	} else {
 		configFile = args[0]
+		repo, err := guessRepo(configFile)
+		if err != nil {
+			log.Printf("Could not guess our repo for Sourcegraph queries: %v", err)
+		} else {
+			sourcegraphRepo = repo
+		}
 	}
 
 	// TODO(mpl): restore CLI mode when ready.
